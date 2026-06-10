@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+sqlalchemy
+aiohttp
+feedparser
+beautifulsoup4
+python-dotenv
+slowapi
+readability-lxml
+deep-translator
+aiosqlite

@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pharos | Pelagos</title>
+    <!-- Modern Typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,600;1,600&display=swap" rel="stylesheet">
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <!-- Three.js Background -->
+    <canvas id="webgl-bg"></canvas>
+
+    <!-- Mobile Sidebar Toggle -->
+    <button class="sidebar-toggle" aria-label="Toggle Menu">
+        <i class="ph ph-list"></i>
+    </button>
+
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar glass-panel">
+            <div class="brand">
+                <i class="ph-fill ph-lighthouse"></i>
+                <span>Pharos</span>
+            </div>
+
+            <nav class="categories-nav">
+                <h3><i class="ph ph-compass"></i> Harbors</h3>
+                <ul id="category-list">
+                    <li class="category-header active" id="all-streams">
+                        <i class="ph ph-planet"></i> Open Sea
+                    </li>
+                </ul>
+            </nav>
+
+
+
+            <!-- User Stats & Settings -->
+            <div class="user-stats">
+                <button id="settings-btn" class="premium-btn" style="width: 100%; justify-content: center; margin-bottom: 12px;">
+                    <i class="ph ph-gear"></i> Settings
+                </button>
+                <div class="stat-box">
+                    <span class="label">News Waves</span>
+                    <span class="value" id="total-articles-count">--</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="feed-stream">
+            <header class="top-bar glass-panel">
+                <div class="current-view">
+                    <h1>Currents</h1>
+                    <p class="subtitle">News currents from the open sea</p>
+                </div>
+                <div class="controls">
+                    <button id="refresh-btn" class="premium-btn">
+                        <i class="ph ph-arrows-clockwise"></i> Scan Horizon
+                    </button>
+                </div>
+            </header>
+
+            <div class="content-wrapper">
+                <div id="article-grid" class="article-grid masonry">
+                    <!-- Skeleton loaders will be injected here via JS initially -->
+                </div>
+            </div>
+
+
+        </main>
+    </div>
+
+    <!-- Three.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <!-- Modals -->
+    <div id="reader-modal" class="modal-overlay hidden">
+        <div class="modal-content glass-panel reader-content">
+            <button class="close-modal"><i class="ph ph-x"></i></button>
+            <div class="reader-header">
+                <h1 id="reader-title">Loading...</h1>
+                <div class="reader-actions">
+                    <button id="translate-btn" class="premium-btn"><i class="ph ph-translate"></i> Translate</button>
+                    <a id="reader-original-link" href="#" target="_blank" class="premium-btn"><i class="ph ph-arrow-square-out"></i> Original</a>
+                </div>
+            </div>
+            <div id="reader-body" class="reader-body">
+                <!-- content -->
+            </div>
+        </div>
+    </div>
+
+    <div id="settings-modal" class="modal-overlay hidden">
+        <div class="modal-content glass-panel settings-content">
+            <button class="close-modal"><i class="ph ph-x"></i></button>
+            <div class="top-bar" style="padding: 0 0 20px 0;">
+                <h1>Settings & Harbors</h1>
+            </div>
+            
+            <div class="settings-section">
+                <h3>Translation Language</h3>
+                <select id="lang-select" class="form-input">
+                    <option value="">Original Language</option>
+                    <option value="el">Greek (Ελληνικά)</option>
+                </select>
+            </div>
+
+            <div class="settings-section">
+                <h3>Add New Feed</h3>
+                <div class="form-group">
+                    <input type="text" id="new-feed-url" placeholder="RSS/Atom URL" class="form-input">
+                    <input type="text" id="new-feed-title" placeholder="Feed Title" class="form-input">
+                    <input type="text" id="new-feed-category" placeholder="Category Name" class="form-input" style="width: 150px;">
+                    <button id="add-feed-btn" class="premium-btn">Add</button>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <h3>Manage Feeds</h3>
+                <ul id="manage-feeds-list" class="manage-list">
+                    <!-- Feeds loaded here -->
+                </ul>
+            </div>
+    <div id="lighthouse-loading" class="modal-overlay hidden" style="display: none;">
+        <div class="lighthouse-card glass-panel" style="display: flex; flex-direction: column; align-items: center; padding: 30px; text-align: center; border: 1px solid var(--panel-border); border-radius: 16px;">
+            <canvas id="lighthouse-canvas" width="200" height="200"></canvas>
+            <div class="loading-text" style="color: var(--accent); font-family: var(--font-display); font-style: italic; font-size: 18px; margin-top: 10px;">
+                Scanning the horizon...
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/three_bg.js"></script>
+    <script src="/static/lighthouse_spinner.js"></script>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
