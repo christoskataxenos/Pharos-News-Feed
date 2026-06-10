@@ -23,7 +23,7 @@ from models import Article, Category, Feed, UserInteraction
 from fetcher import update_all_feeds
 
 limiter = Limiter(key_func=get_remote_address)
-app = FastAPI(title="FeedFlow V2 Premium")
+app = FastAPI(title="Pharos News Feed")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
