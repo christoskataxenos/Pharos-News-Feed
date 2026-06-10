@@ -49,7 +49,11 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 async def on_startup():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    # We could seed here automatically or wait for seeder.py
+    
+    # Automatically seed default tech news feeds so the user has something to work with.
+    # The seeder handles idempotency (won't duplicate if they already exist).
+    from seeder import seed_database
+    await seed_database()
 
 @app.get("/")
 async def serve_spa():
