@@ -1,4 +1,4 @@
-# FeedFlow V2 (Pelagos)
+# FeedFlow V2 (Pharos)
 
 FeedFlow V2 (also known as Pelagos) is a modern, high-performance asynchronous RSS feed reader and aggregator built with FastAPI, SQLAlchemy, and a dynamic frontend styled with Vanilla CSS and Three.js. It features automated Open Graph cover image extraction and parallel feed updating.
 
