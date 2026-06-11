@@ -9,3 +9,4 @@ slowapi
 readability-lxml
 deep-translator
 aiosqlite
+rapidfuzz

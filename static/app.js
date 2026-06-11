@@ -10,12 +10,27 @@ document.addEventListener("DOMContentLoaded", () => {
     const settingsModal = document.getElementById('settings-modal');
     const langSelect = document.getElementById('lang-select');
     
+    // Στοιχεία DOM για την εμφάνιση του τίτλου και υπότιτλου της τρέχουσας ροής ειδήσεων
+    const currentViewTitle = document.querySelector(".current-view h1");
+    const currentViewSubtitle = document.querySelector(".current-view .subtitle");
+
+    // Συνάρτηση για τη δυναμική αλλαγή του τίτλου και του υπότιτλου στην κορυφή
+    function updateHeaderTitle(title, subtitle) {
+        if (currentViewTitle) {
+            currentViewTitle.textContent = title;
+        }
+        if (currentViewSubtitle) {
+            currentViewSubtitle.textContent = subtitle;
+        }
+    }
+
     let currentCategoryId = null;
     let currentArticleId = null;
     let lastDate = null;
     let isLoading = false;
     let hasMore = true;
     let globalFeeds = [];
+    let showFiltered = false;
 
     // Initialize language preference
     const savedLang = localStorage.getItem('pharos_lang') || '';
@@ -161,6 +176,8 @@ document.addEventListener("DOMContentLoaded", () => {
     // Fetch initial data
     initApp();
 
+
+
     refreshBtn.addEventListener("click", async () => {
         const icon = refreshBtn.querySelector('i');
         icon.classList.add('ph-spin');
@@ -223,7 +240,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
         let url = `/api/articles?`;
         if (lastDate) url += `last_date=${encodeURIComponent(lastDate)}&`;
-        if (catId) url += `category_id=${catId}`;
+        if (catId) {
+            if (typeof catId === 'string' && catId.includes(',')) {
+                url += `category_ids=${catId}&`;
+            } else {
+                url += `category_id=${catId}&`;
+            }
+        }
+        if (showFiltered) url += `show_filtered=true`;
 
         try {
             const res = await fetch(url);
@@ -288,7 +312,14 @@ document.addEventListener("DOMContentLoaded", () => {
                 ? `<img src="${art.image_url}" alt="Cover" class="article-image" loading="lazy" onerror="this.onerror=null; this.outerHTML='<div class=\\'article-image\\' style=\\'background: linear-gradient(135deg, rgba(10, 25, 40, 0.8), rgba(0, 180, 216, 0.2)); display: flex; align-items:center; justify-content:center;\\'><i class=\\'ph ph-image-broken\\' style=\\'font-size: 48px; color: rgba(255,255,255,0.15);\\'></i></div>';">` 
                 : `<div class="article-image" style="background: linear-gradient(135deg, rgba(10, 25, 40, 0.8), rgba(0, 180, 216, 0.2)); display: flex; align-items:center; justify-content:center;"><i class="ph ph-newspaper" style="font-size: 48px; color: rgba(255,255,255,0.15);"></i></div>`;
 
+            // Γραμμή ποιότητας στην κορυφή του card
+            const qs = art.quality_score != null ? art.quality_score : 1.0;
+            let qClass = 'quality-high';
+            if (qs < 0.4) qClass = 'quality-low';
+            else if (qs < 0.7) qClass = 'quality-mid';
+
             card.innerHTML = `
+                <div class="quality-bar ${qClass}" title="Quality: ${(qs * 100).toFixed(0)}%${art.filter_flags ? ' — ' + art.filter_flags : ''}"></div>
                 ${imageHtml}
                 <div class="article-content">
                     <span class="feed-tag">${art.feed_title}</span>
@@ -296,6 +327,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     <p class="article-summary">${art.summary || ''}</p>
                     <div class="article-meta">
                         <span><i class="ph ph-calendar-blank"></i> ${art.published}</span>
+                        <span class="quality-badge ${qClass}">Article Quality: ${(qs * 100).toFixed(0)}%</span>
                     </div>
                 </div>
             `;
@@ -346,34 +378,197 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    // Global stack definitions for grouping and 3D visualizer
+    const STACK_DEFINITIONS = {
+        'dev-ops': {
+            name: 'Code & Infrastructure',
+            keywords: ['dev', 'code', 'programm', 'engineer', 'linux', 'sys', 'ops', 'homelab', 'network', 'secur', 'cloud', 'host', 'docker', 'k8s', 'rust', 'python', 'go', 'software', 'git', 'terminal'],
+            color: '#00B4D8',
+            geometryType: 'torusKnot'
+        },
+        'science-tech': {
+            name: 'Discovery & Science',
+            keywords: ['science', 'tech', 'research', 'school', 'uni', 'academia', 'hack', 'innovat', 'learn', 'institute', 'lab', 'space', 'nasa', 'esa', 'cern', 'nature', 'math', 'physic'],
+            color: '#9d4edd',
+            geometryType: 'dodecahedron'
+        },
+        'media-podcasts': {
+            name: 'Voices & Play',
+            keywords: ['podcast', 'audio', 'show', 'media', 'game', 'gaming', 'play', 'music', 'video', 'youtube', 'stream', 'listen', 'talk', 'news'],
+            color: '#f4a261',
+            geometryType: 'octahedron'
+        },
+        'general': {
+            name: 'Open Currents',
+            keywords: [],
+            color: '#2a9d8f',
+            geometryType: 'sphere'
+        }
+    };
+
+    let currentGroups = {};
+
+    function groupCategories(categories) {
+        const groups = {
+            'dev-ops': { id: 'dev-ops', ...STACK_DEFINITIONS['dev-ops'], categories: [] },
+            'science-tech': { id: 'science-tech', ...STACK_DEFINITIONS['science-tech'], categories: [] },
+            'media-podcasts': { id: 'media-podcasts', ...STACK_DEFINITIONS['media-podcasts'], categories: [] },
+            'general': { id: 'general', ...STACK_DEFINITIONS['general'], categories: [] }
+        };
+
+        categories.forEach(cat => {
+            const nameLower = cat.name.toLowerCase();
+            let matched = false;
+
+            for (const kw of STACK_DEFINITIONS['dev-ops'].keywords) {
+                if (nameLower.includes(kw)) {
+                    groups['dev-ops'].categories.push(cat);
+                    matched = true;
+                    break;
+                }
+            }
+
+            if (!matched) {
+                for (const kw of STACK_DEFINITIONS['science-tech'].keywords) {
+                    if (nameLower.includes(kw)) {
+                        groups['science-tech'].categories.push(cat);
+                        matched = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!matched) {
+                for (const kw of STACK_DEFINITIONS['media-podcasts'].keywords) {
+                    if (nameLower.includes(kw)) {
+                        groups['media-podcasts'].categories.push(cat);
+                        matched = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!matched) {
+                groups['general'].categories.push(cat);
+            }
+        });
+
+        return groups;
+    }
+
     function renderCategories(categories) {
         categoryList.innerHTML = '';
+        currentGroups = groupCategories(categories);
+
+        // Open Sea
         const allStreams = document.createElement("li");
         allStreams.className = "category-header active";
         allStreams.setAttribute("data-id", "all");
-        allStreams.innerHTML = `<i class="ph ph-squares-four"></i> Open Sea`;
+        allStreams.innerHTML = `# Open Sea`;
         allStreams.addEventListener('click', () => {
             document.querySelectorAll('.category-header').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.stack-group-header').forEach(el => el.classList.remove('active'));
             allStreams.classList.add('active');
+            
+            // Επαναφορά του τίτλου στην αρχική προβολή "Open Sea"
+            updateHeaderTitle("Open Sea", "News currents from the open sea");
+            
             fetchArticles(null, true);
             if(window.innerWidth <= 900) sidebar.classList.remove("open");
         });
         categoryList.appendChild(allStreams);
 
-        categories.forEach(cat => {
-            const li = document.createElement("li");
-            li.className = "category-header";
-            li.setAttribute("data-id", cat.id);
-            li.innerHTML = `<i class="ph ph-hash"></i> ${cat.name}`;
-            li.addEventListener('click', () => {
-                document.querySelectorAll('.category-header').forEach(el => el.classList.remove('active'));
-                li.classList.add('active');
-                fetchArticles(cat.id, true);
-                if(window.innerWidth <= 900) sidebar.classList.remove("open");
+        // Render groups
+        Object.keys(currentGroups).forEach(groupId => {
+            const group = currentGroups[groupId];
+            if (group.categories.length === 0) return;
+
+            const stackContainer = document.createElement("div");
+            stackContainer.className = "stack-group";
+            stackContainer.setAttribute("data-group-id", groupId);
+
+            const header = document.createElement("div");
+            header.className = "stack-group-header collapsed";
+            header.innerHTML = `
+                <span class="stack-name"># ${group.name}</span>
+                <span class="stack-arrow">[+]</span>
+            `;
+
+            const list = document.createElement("ul");
+            list.className = "stack-category-list collapsed";
+
+            group.categories.forEach(cat => {
+                const li = document.createElement("li");
+                li.className = "category-header";
+                li.setAttribute("data-id", cat.id);
+                li.innerHTML = `* ${cat.name}`;
+                li.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    document.querySelectorAll('.category-header').forEach(el => el.classList.remove('active'));
+                    document.querySelectorAll('.stack-group-header').forEach(el => el.classList.remove('active'));
+                    li.classList.add('active');
+                    header.classList.add('active');
+                    
+                    // Ενημέρωση του τίτλου με το όνομα του συγκεκριμένου λιμανιού (harbor / category)
+                    updateHeaderTitle(cat.name, `Harbor: articles from ${cat.name}`);
+                    
+                    fetchArticles(cat.id, true);
+                    if(window.innerWidth <= 900) sidebar.classList.remove("open");
+                });
+                list.appendChild(li);
             });
-            categoryList.appendChild(li);
+
+            header.addEventListener('click', () => {
+                const isCollapsed = list.classList.toggle("collapsed");
+                header.className.toggle("collapsed", isCollapsed);
+                header.querySelector(".stack-arrow").textContent = isCollapsed ? "[+]" : "[-]";
+
+                document.querySelectorAll('.category-header').forEach(el => el.classList.remove('active'));
+                document.querySelectorAll('.stack-group-header').forEach(el => el.classList.remove('active'));
+                header.classList.add('active');
+
+                // Ενημέρωση του τίτλου με το όνομα του αρχιπελάγους (category group)
+                updateHeaderTitle(group.name, `Archipelago: exploring ${group.name}`);
+
+                const catIds = group.categories.map(c => c.id).join(',');
+                fetchArticles(catIds, true);
+            });
+
+            header.addEventListener('mouseenter', () => {
+                if (window.highlightStack3D) {
+                    window.highlightStack3D(groupId);
+                }
+            });
+            header.addEventListener('mouseleave', () => {
+                if (window.highlightStack3D) {
+                    window.highlightStack3D(null);
+                }
+            });
+
+            stackContainer.appendChild(header);
+            stackContainer.appendChild(list);
+            categoryList.appendChild(stackContainer);
         });
+
+        // Initialize 3D Visualizer
+        if (window.initStacks3D) {
+            window.initStacks3D(currentGroups);
+        }
     }
+
+    window.selectStackFrom3D = (groupId) => {
+        const stackGroup = document.querySelector(`.stack-group[data-group-id="${groupId}"]`);
+        if (stackGroup) {
+            const header = stackGroup.querySelector('.stack-group-header');
+            if (header) {
+                header.click();
+                const list = stackGroup.querySelector('.stack-category-list');
+                if (list && list.classList.contains('collapsed')) {
+                    header.click();
+                }
+            }
+        }
+    };
     
     // Modal Event Listeners
     document.querySelectorAll('.close-modal').forEach(btn => {

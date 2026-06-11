@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, Index
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, Index, Float
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -39,6 +39,9 @@ class Article(Base):
     summary = Column(Text, nullable=True)
     image_url = Column(String(500), nullable=True)
     is_read = Column(Boolean, default=False, index=True)
+    quality_score = Column(Float, default=1.0, index=True)
+    filter_flags = Column(String(500), nullable=True)
+    is_filtered = Column(Boolean, default=False, index=True)
     
     feed = relationship('Feed', back_populates='articles')
     interactions = relationship('UserInteraction', back_populates='article', cascade="all, delete-orphan")

@@ -1,110 +1,101 @@
-# Pharos — News Feed Aggregator
+# Pharos (FeedFlow V2) — Modern News Feed Aggregator
 
-Pharos is a modern, high-performance asynchronous news feed aggregator built with FastAPI, SQLAlchemy, and a dynamic glassmorphic frontend. It supports RSS/Atom feeds, web scraping with automatic Cloudflare bypass, Open Graph cover image extraction, and inline article translation.
+Το **Pharos** είναι ένας σύγχρονος, υψηλών επιδόσεων ασύγχρονος news feed aggregator χτισμένος με **FastAPI**, **SQLAlchemy** (Async) και ένα εντυπωσιακό **Glassmorphic** frontend. Υποστηρίζει RSS/Atom feeds, έξυπνο web scraping, αυτόματη εξαγωγή εικόνων Open Graph και ενσωματωμένη μετάφραση άρθρων.
 
-## Features
+---
 
-- **High-Performance Async Fetching**: Uses `aiohttp` and `asyncio.gather` with semaphores to parse multiple RSS feeds concurrently without blocking the event loop.
-- **Cloudflare Bypass**: Automatically falls back to a Google Translate proxy when direct fetching is blocked by Cloudflare JS challenges (e.g. 403 responses), enabling scraping of protected sites like AEK365.
-- **Dynamic Categories**: Users can create custom categories on the fly when adding feeds — each new category automatically appears in the sidebar navigation.
-- **SQLite Optimizations**: Configured in WAL (Write-Ahead Logging) mode with explicit busy timeouts to handle high concurrency and prevent 'database is locked' errors.
-- **Cursor-Based Pagination**: Employs timestamp-based cursors (`last_date`) instead of traditional offsets for infinite scrolling, ensuring zero duplicate articles and sub-millisecond query performance on large datasets.
-- **Security**:
-  - **XSS Protection**: Frontend sanitization using `DOMPurify` guarantees safe HTML rendering of external RSS content.
-  - **SSRF Prevention**: `urllib` parsing combined with local-IP blocks prevents Server-Side Request Forgery during feed discovery.
-  - **Rate Limiting**: Integrated `slowapi` to prevent DDoS and brute-force attacks across all API routes.
-- **Translation Engine**: Built-in article translation to Greek via `deep-translator`, offloaded to background threads to prevent event-loop freezing.
-- **Interactive UI**: Animated WebGL particle background, dark glassmorphic styling, lighthouse loading animation, and integrated reader view with `readability-lxml`.
+## ✨ Χαρακτηριστικά
 
-## Project Structure
+- **🚀 Υψηλές Επιδόσεις (Async)**: Χρήση `aiohttp` και `asyncio.gather` με semaphores για ταυτόχρονη επεξεργασία δεκάδων feeds χωρίς καθυστερήσεις.
+- **🛡️ Cloudflare Bypass**: Έξυπνο σύστημα που εντοπίζει αν ένα site μπλοκάρει το scraping (403 Error) και χρησιμοποιεί αυτόματα Google Translate proxy για να ανακτήσει το περιεχόμενο.
+- **📂 Αυτόματη Κατηγοριοποίηση**: Δυνατότητα δημιουργίας κατηγοριών on-the-fly. Τα νέα feeds ταξινομούνται αυτόματα και εμφανίζονται στο sidebar navigation.
+- **⚡ SQLite με WAL Mode**: Βελτιστοποιημένη βάση δεδομένων για αποφυγή του "database is locked" και υποστήριξη υψηλού concurrency.
+- **🔄 Cursor-Based Pagination**: Infinite scrolling χωρίς διπλότυπα άρθρα και με ελάχιστο φόρτο στη βάση, ακόμα και με χιλιάδες εγγραφές.
+- **🎨 Glassmorphic UI**:
+  - Animated WebGL particle background (Three.js).
+  - Lighthouse loading animation.
+  - Reader Mode για καθαρή ανάγνωση άρθρων (Readability.js).
+- **🌍 Μετάφραση & Scrapers**: Ενσωματωμένη μετάφραση στα Ελληνικά και ειδικοί scrapers για sites που δεν έχουν RSS (π.χ. AEK365).
+- **📦 Docker Ready**: Έτοιμο Dockerfile για εύκολο deployment οπουδήποτε.
 
-```
-feedflow-v2/
-├── static/                     # Frontend assets
-│   ├── index.html              # SPA markup
-│   ├── styles.css              # Glassmorphic styling and layouts
-│   ├── app.js                  # State handling, rendering, and API calls
-│   ├── three_bg.js             # Three.js particle background setup
-│   └── lighthouse_spinner.js   # Lighthouse loading animation
-├── database.py                 # SQLite + SQLAlchemy async connection configuration
-├── models.py                   # Database schemas (Category, Feed, Article, UserInteraction)
-├── fetcher.py                  # Feed fetching, scraping, Cloudflare bypass, and OG image extraction
-├── seeder.py                   # Initial category and RSS feed database seeding
-├── backfill_images.py          # Backfilling utility for fetching missing images on existing articles
-├── test_fetcher.py             # Unit tests for image extraction and URL cleaning
-├── requirements.txt            # Python dependency list
-├── main.py                     # FastAPI application and REST API endpoints
-├── Dockerfile                  # Container build configuration
-└── .env                        # Environment variables (admin credentials, database URL)
-```
+---
 
-## Setup Instructions
+## 🛠️ Τεχνολογίες (Tech Stack)
 
-### Prerequisites
+- **Backend**: Python 3.11+, FastAPI, SQLAlchemy (Async), Pydantic.
+- **Database**: SQLite (Asyncio).
+- **Frontend**: Vanilla JS (ES6+), Three.js (Background), CSS Grid/Flexbox (Glassmorphism).
+- **Libraries**: `feedparser`, `beautifulsoup4`, `readability-lxml`, `deep-translator`.
 
-- Python 3.11 or higher
-- `pip` package manager
+---
 
-### Installation
+## 🚀 Γρήγορη Εκκίνηση (Quick Start)
 
-1. Create a Python virtual environment:
+### 🐳 Με Docker (Προτεινόμενο)
+
+Η εφαρμογή είναι ρυθμισμένη να **κάνει αυτόματα seed** τα default feeds και να ξεκινάει το **πρώτο συγχρονισμό** άρθρων με το που τρέξει.
+
+1. **Κατεβάστε και τρέξτε το image**:
    ```bash
+   docker run -d -p 8000:8000 --name pharos christosk89/feedflow:latest
+   ```
+2. **Πρόσβαση**: Ανοίξτε το πρόγραμμα περιήγησης στο `http://localhost:8000`.
+
+*Σημείωση: Για να μην χάνονται τα δεδομένα σας όταν σβήνετε το container, χρησιμοποιήστε volumes:*
+```bash
+docker run -d -p 8000:8000 -v pharos_data:/app christosk89/feedflow:latest
+```
+
+### 💻 Τοπική Εγκατάσταση (Local Setup)
+
+1. **Clone & Virtual Env**:
+   ```bash
+   git clone <your-repo-url>
+   cd feedflow-v2
    python -m venv venv
+   source venv/bin/activate  # Σε Windows: .\venv\Scripts\Activate.ps1
    ```
 
-2. Activate the virtual environment:
-   - On Windows (PowerShell):
-     ```powershell
-     .\venv\Scripts\Activate.ps1
-     ```
-   - On Linux/macOS:
-     ```bash
-     source venv/bin/activate
-     ```
-
-3. Install required dependencies:
+2. **Εγκατάσταση Dependencies**:
    ```bash
    pip install -r requirements.txt
    ```
 
-### Configuration
+3. **Ρύθμιση `.env`**:
+   Δημιουργήστε ένα αρχείο `.env`:
+   ```env
+   ADMIN_USERNAME=admin
+   ADMIN_PASSWORD=your_password
+   ```
 
-Create a `.env` file (or edit the existing one) with your preferred settings:
+4. **Εκτέλεση**:
+   ```bash
+   uvicorn main:app --reload
+   ```
+   *Η βάση θα δημιουργηθεί και θα γεμίσει αυτόματα με τα default feeds στην πρώτη εκτέλεση.*
 
-```env
-ADMIN_USERNAME=admin
-ADMIN_PASSWORD=secret
-DATABASE_URL=sqlite+aiosqlite:///./feedhub.db
-```
+---
 
-### Database Seeding
+## 📂 Δομή Φακέλων
 
-To initialize the SQLite database and seed the default categories and feeds:
-```bash
-python seeder.py
-```
+- `main.py`: Τα API endpoints και η λογική εκκίνησης.
+- `fetcher.py`: Η "καρδιά" του συστήματος. Διαχειρίζεται το parsing, scraping και Cloudflare bypass.
+- `seeder.py`: Περιέχει τα hardcoded default feeds (Tech News, Greek Tech, κλπ).
+- `models.py`: Τα database schemas.
+- `static/`: Όλος ο κώδικας του frontend (HTML/CSS/JS).
+- `backfill_images.py`: Utility για να τραβήξετε εικόνες Open Graph για παλιά άρθρα.
 
-To backfill cover images for any existing articles using the Open Graph scraper:
-```bash
-python backfill_images.py
-```
+---
 
-### Running the Application
+## 🧪 Testing
 
-Start the development server using Uvicorn:
-```bash
-uvicorn main:app --reload
-```
-
-Once started, open your web browser and navigate to `http://127.0.0.1:8000`.
-
-## Testing
-
-Unit tests cover image extraction, URL cleaning (Google Translate proxy cleanup), and edge cases. Run them with:
+Τρέξτε τα unit tests για να επιβεβαιώσετε τη σωστή λειτουργία του scraper και του URL cleaning:
 ```bash
 python -m unittest test_fetcher.py -v
 ```
 
-## License
+---
+
+## 📝 License
 
 This project is private and intended for personal use.

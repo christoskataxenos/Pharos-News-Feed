@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends, BackgroundTasks, Request, HTTPException
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import secrets
 import os
+import asyncio
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -9,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import desc, func
+from sqlalchemy import desc, func, text
 from pydantic import BaseModel
 from typing import List, Optional
 
@@ -18,7 +19,7 @@ from readability import Document
 from deep_translator import GoogleTranslator
 import aiohttp
 
-from database import get_db, engine, Base
+from database import get_db, engine, Base, AsyncSessionLocal
 from models import Article, Category, Feed, UserInteraction
 from fetcher import update_all_feeds
 
@@ -47,13 +48,49 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.on_event("startup")
 async def on_startup():
+    print("Initializing database...")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        
+        # Έλεγχος αν υπάρχουν οι νέες στήλες στον πίνακα articles και προσθήκη τους αν λείπουν
+        # Αυτό εξασφαλίζει ομαλή μετάβαση χωρίς την ανάγκη για manual migrations (Alembic κλπ)
+        result = await conn.execute(text("PRAGMA table_info(articles)"))
+        columns = [row[1] for row in result.fetchall()]
+        
+        # Προσθήκη στήλης quality_score αν δεν υπάρχει
+        if "quality_score" not in columns:
+            print("Adding quality_score column to articles table...")
+            await conn.execute(text("ALTER TABLE articles ADD COLUMN quality_score FLOAT DEFAULT 1.0"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_articles_quality_score ON articles (quality_score)"))
+            
+        # Προσθήκη στήλης filter_flags αν δεν υπάρχει
+        if "filter_flags" not in columns:
+            print("Adding filter_flags column to articles table...")
+            await conn.execute(text("ALTER TABLE articles ADD COLUMN filter_flags VARCHAR(500)"))
+            
+        # Προσθήκη στήλης is_filtered αν δεν υπάρχει
+        if "is_filtered" not in columns:
+            print("Adding is_filtered column to articles table...")
+            await conn.execute(text("ALTER TABLE articles ADD COLUMN is_filtered BOOLEAN DEFAULT 0"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_articles_is_filtered ON articles (is_filtered)"))
     
     # Automatically seed default tech news feeds so the user has something to work with.
     # The seeder handles idempotency (won't duplicate if they already exist).
+    print("Seeding default feeds...")
     from seeder import seed_database
     await seed_database()
+    
+    # Check if we have articles. If not, trigger an initial refresh in the background.
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(func.count(Article.id)))
+        count = result.scalar_one()
+        if count == 0:
+            print("No articles found. Triggering initial background refresh...")
+            from fetcher import update_all_feeds
+            # Run in background to not block startup
+            asyncio.create_task(update_all_feeds())
+        else:
+            print(f"Database ready with {count} articles.")
 
 @app.get("/")
 async def serve_spa():
@@ -101,6 +138,8 @@ class ArticleResponse(BaseModel):
     feed_title: str
     feed_type: str
     is_read: bool
+    quality_score: float
+    filter_flags: Optional[str]
 
 class PaginatedArticlesResponse(BaseModel):
     articles: List[ArticleResponse]
@@ -109,15 +148,34 @@ class PaginatedArticlesResponse(BaseModel):
 
 @app.get("/api/articles", response_model=PaginatedArticlesResponse)
 @limiter.limit("100/minute")
-async def get_articles(request: Request, last_date: str = None, category_id: int = None, feed_id: int = None, db: AsyncSession = Depends(get_db)):
+async def get_articles(request: Request, last_date: str = None, category_id: int = None, category_ids: str = None, feed_id: int = None, show_filtered: bool = False, db: AsyncSession = Depends(get_db)):
     per_page = 20
     
     query = select(Article, Feed).join(Feed, Article.feed_id == Feed.id).order_by(desc(Article.published), desc(Article.id))
     count_query = select(func.count(Article.id)).join(Feed, Article.feed_id == Feed.id)
     
+    # Φιλτράρισμα χαμηλής ποιότητας άρθρων εκτός αν ζητηθεί διαφορετικά
+    if not show_filtered:
+        query = query.where(Article.is_filtered == False)
+        count_query = count_query.where(Article.is_filtered == False)
+    
+    # Έλεγχος αν ζητήθηκε συγκεκριμένη κατηγορία ή πολλαπλές κατηγορίες (Archipelago stack)
     if category_id:
         query = query.where(Feed.category_id == category_id)
         count_query = count_query.where(Feed.category_id == category_id)
+    elif category_ids:
+        # Μετατροπή της συμβολοσειράς των IDs σε λίστα ακεραίων
+        parsed_ids = []
+        for item in category_ids.split(","):
+            cleaned_val = item.strip()
+            if cleaned_val.isdigit():
+                parsed_ids.append(int(cleaned_val))
+        
+        # Εφαρμογή φιλτραρίσματος μόνο αν έχουμε έγκυρα IDs στη λίστα
+        if parsed_ids:
+            query = query.where(Feed.category_id.in_(parsed_ids))
+            count_query = count_query.where(Feed.category_id.in_(parsed_ids))
+            
     if feed_id:
         query = query.where(Article.feed_id == feed_id)
         count_query = count_query.where(Article.feed_id == feed_id)
@@ -150,13 +208,56 @@ async def get_articles(request: Request, last_date: str = None, category_id: int
             "raw_published": art.published.isoformat(),
             "feed_title": feed.title,
             "feed_type": feed.type,
-            "is_read": art.is_read
+            "is_read": art.is_read,
+            "quality_score": art.quality_score if art.quality_score is not None else 1.0,
+            "filter_flags": art.filter_flags,
         })
         
     return {
         "articles": articles,
         "has_next": len(articles) == per_page,
         "total": total_count
+    }
+
+@app.get("/api/stats/quality")
+@limiter.limit("30/minute")
+async def quality_stats(request: Request, db: AsyncSession = Depends(get_db)):
+    """Στατιστικά ποιότητας / filtering — πόσα φιλτραρίστηκαν και γιατί."""
+    # Σύνολο άρθρων
+    total_res = await db.execute(select(func.count(Article.id)))
+    total = total_res.scalar_one()
+
+    # Φιλτραρισμένα άρθρα
+    filtered_res = await db.execute(
+        select(func.count(Article.id)).where(Article.is_filtered == True)
+    )
+    filtered = filtered_res.scalar_one()
+
+    # Μέσος όρος quality score
+    avg_res = await db.execute(select(func.avg(Article.quality_score)))
+    avg_score = avg_res.scalar_one() or 0.0
+
+    # Ανάλυση flags — ποια flags εμφανίζονται πιο συχνά
+    flags_res = await db.execute(
+        select(Article.filter_flags).where(Article.filter_flags != None)
+    )
+    flag_counts: dict[str, int] = {}
+    for row in flags_res.all():
+        if row[0]:
+            for flag in row[0].split(","):
+                flag = flag.strip()
+                if flag:
+                    flag_counts[flag] = flag_counts.get(flag, 0) + 1
+
+    # Ταξινόμηση flags κατά συχνότητα (φθίνουσα)
+    top_flags = sorted(flag_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+
+    return {
+        "total_articles": total,
+        "filtered_articles": filtered,
+        "pass_rate": round((total - filtered) / total * 100, 1) if total > 0 else 100.0,
+        "avg_quality_score": round(avg_score, 3),
+        "top_flags": [{"flag": f, "count": c} for f, c in top_flags],
     }
 
 @app.post("/api/mark_read/{article_id}")
@@ -184,11 +285,84 @@ async def read_article(request: Request, article_id: int, lang: str = None, db: 
         html = article.summary or ""
         try:
             async with aiohttp.ClientSession(connector = aiohttp.TCPConnector(ssl = False)) as session:
-                headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-                async with session.get(article.link, headers=headers, timeout=5) as resp:
-                    if resp.status == 200:
-                        html = await resp.text()
-        except Exception:
+                # 1. Προσπάθεια άμεσης ανάκτησης με Googlebot User-Agent
+                # Αυτό παρακάμπτει τα cookie walls στα περισσότερα ειδησεογραφικά site (Golem, Heise κλπ.)
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
+                }
+                async with session.get(article.link, headers=headers, timeout=8) as resp:
+                    resp_url_str = str(resp.url).lower()
+                    
+                    # Έλεγχος αν ανακατευθυνθήκαμε σε σελίδα συναίνεσης (cookie wall / zustimmung)
+                    # Ή αν η απάντηση δεν είναι επιτυχής (π.χ. 403, 500)
+                    is_consent_redirect = any(x in resp_url_str for x in ["/zustimmung", "consent", "cookie-consent", "cookie-wall", "agree"])
+                    
+                    if resp.status == 200 and not is_consent_redirect:
+                        temp_html = await resp.text()
+                        
+                        # Επιπλέον έλεγχος περιεχομένου για Golem/Heise cookie walls αν ξεφύγουν από το url redirect
+                        is_cookie_page = "willkommen auf golem.de" in temp_html.lower() or "pur-abo" in temp_html.lower()
+                        
+                        if not is_cookie_page:
+                            html = temp_html
+                        else:
+                            print(f"Detected cookie wall in content for {article.link}, triggering translate fallback.")
+                    else:
+                        print(f"Direct fetch with Googlebot failed (status={resp.status}, redirect={resp_url_str}). Trying fallback...")
+
+            # 2. Fallback: Ανάκτηση μέσω Google Translate proxy αν το Googlebot UA αποτύχει ή μπλοκαριστεί
+            if html == (article.summary or ""):
+                async with aiohttp.ClientSession(connector = aiohttp.TCPConnector(ssl = False)) as session:
+                    # Χρήση browser headers για το Google Translate
+                    browser_headers = {
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                    }
+                    translate_url = f"https://translate.google.com/translate?sl=auto&tl=el&u={article.link}"
+                    async with session.get(translate_url, headers=browser_headers, timeout=8) as resp:
+                        if resp.status == 200:
+                            html = await resp.text()
+                            print(f"Successfully fetched article via Translate proxy: {article.link}")
+
+            # 3. Fallback: Ανάκτηση μέσω curl αν οι προηγούμενες μέθοδοι απέτυχαν (π.χ. λόγω Cloudflare TLS fingerprinting)
+            if html == ( article.summary or "" ):
+                try:
+                    # Επιλογή του κατάλληλου εκτελέσιμου ανάλογα με το λειτουργικό σύστημα
+                    import platform
+                    curl_bin = "curl.exe" if platform.system() == "Windows" else "curl"
+                    
+                    # Ορισμός των παραμέτρων της κλήσης
+                    curl_cmd = [
+                        curl_bin,
+                        "-s",
+                        "-L",
+                        "-A", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                        article.link
+                    ]
+                    
+                    # Εκτέλεση του curl.exe ως ασύγχρονη διεργασία
+                    proc = await asyncio.create_subprocess_exec(
+                        *curl_cmd,
+                        stdout = asyncio.subprocess.PIPE,
+                        stderr = asyncio.subprocess.PIPE
+                    )
+                    
+                    # Αναμονή για την ολοκλήρωση της διεργασίας με χρονικό όριο 8 δευτερολέπτων
+                    stdout, stderr = await asyncio.wait_for(
+                        proc.communicate(),
+                        timeout = 8.0
+                    )
+                    
+                    # Έλεγχος αν η διεργασία ολοκληρώθηκε επιτυχώς
+                    if proc.returncode == 0:
+                        temp_html = stdout.decode( "utf-8", errors = "ignore" )
+                        if temp_html.strip():
+                            html = temp_html
+                            print( f"Successfully fetched article via curl.exe: {article.link}" )
+                except Exception as curl_error:
+                    # Καταγραφή τυχόν σφάλματος κατά την εκτέλεση του curl
+                    print( f"Error fetching via curl.exe: {curl_error}" )
+        except Exception as e:
+            print(f"Error fetching article content: {e}")
             pass # Fallback to summary if live fetch fails or times out
                 
         # Use Readability to extract main content and remove clutter

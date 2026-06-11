@@ -8,6 +8,7 @@ from urllib.parse import urljoin, urlparse, urlunparse, parse_qsl, urlencode
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from models import Feed, Article
+from filters import score_article, QUALITY_THRESHOLD
 
 # Κεφαλίδες HTTP που μιμούνται πραγματικό browser για αποφυγή μπλοκαρίσματος
 _BROWSER_HEADERS: dict[str, str] = {
@@ -317,6 +318,14 @@ async def process_scrape_feed(
         # Ανάκτηση εικόνας (με αυτόματο fallback)
         image_url = await fetch_og_image(session, full_url)
 
+        # Βαθμολόγηση ποιότητας scraped άρθρου
+        quality_score, flags = score_article(
+            title=title[:255],
+            summary="Web scraped article",
+            feed_title=feed.title,
+        )
+        is_filtered = quality_score < QUALITY_THRESHOLD
+
         article = Article(
             feed_id=feed.id,
             title=title[:255],
@@ -324,6 +333,9 @@ async def process_scrape_feed(
             published=datetime.utcnow(),
             summary="Web scraped article",
             image_url=image_url,
+            quality_score=quality_score,
+            filter_flags=",".join(flags) if flags else None,
+            is_filtered=is_filtered,
         )
         db_session.add(article)
         new_articles_count += 1
@@ -357,6 +369,12 @@ async def process_feed(
             # 10 Days Buffer for all feeds
             min_date = datetime.utcnow() - timedelta(days=10)
 
+            # Ανάκτηση πρόσφατων τίτλων (48 ώρες) για fuzzy duplicate detection
+            dedup_cutoff = datetime.utcnow() - timedelta(hours=48)
+            recent_stmt = select(Article.title).where(Article.published >= dedup_cutoff)
+            recent_result = await db_session.execute(recent_stmt)
+            recent_titles = [row[0] for row in recent_result.all()]
+
             # Process up to 100 entries per feed to fill the buffer
             for entry in parsed.entries[:100]:
                 # Check if exists
@@ -385,16 +403,31 @@ async def process_feed(
                     soup = BeautifulSoup(summary, 'html.parser')
                     summary = soup.get_text()[:500] + "..." if len(soup.get_text()) > 500 else soup.get_text()
                 
+                # Βαθμολόγηση ποιότητας άρθρου πριν την αποθήκευση
+                quality_score, flags = score_article(
+                    title=entry.title,
+                    summary=summary,
+                    feed_title=feed.title,
+                    recent_titles=recent_titles,
+                )
+                is_filtered = quality_score < QUALITY_THRESHOLD
+
                 article = Article(
                     feed_id=feed.id,
                     title=entry.title,
                     link=entry.link,
                     published=published,
                     summary=summary,
-                    image_url=image_url
+                    image_url=image_url,
+                    quality_score=quality_score,
+                    filter_flags=",".join(flags) if flags else None,
+                    is_filtered=is_filtered,
                 )
                 db_session.add(article)
                 new_count += 1
+
+                # Προσθήκη νέου τίτλου στη λίστα dedup για τα επόμενα entries
+                recent_titles.append(entry.title)
                 
     # Update last fetched timestamp
     feed.last_fetched = datetime.utcnow()

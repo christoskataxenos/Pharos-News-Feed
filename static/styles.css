@@ -64,10 +64,28 @@ body {
     padding: 30px;
     display: flex;
     flex-direction: column;
-    gap: 40px;
+    gap: 20px;
     height: calc(100vh - 40px);
     position: sticky;
     top: 20px;
+}
+
+.categories-nav {
+    flex-grow: 1;
+    overflow-y: auto;
+    margin-right: -10px;
+    padding-right: 10px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--panel-border) transparent;
+}
+
+.categories-nav::-webkit-scrollbar {
+    width: 4px;
+}
+
+.categories-nav::-webkit-scrollbar-thumb {
+    background: var(--panel-border);
+    border-radius: 4px;
 }
 
 .brand {
@@ -271,6 +289,36 @@ li.category-header.active {
     color: var(--text-muted);
 }
 
+/* Quality Indicator Bar — γραμμή ποιότητας στην κορυφή κάθε card */
+.quality-bar {
+    height: 4px;
+    width: 100%;
+    border-radius: 12px 12px 0 0;
+    transition: background 0.3s ease;
+}
+.quality-bar.quality-high { background: linear-gradient(90deg, #22c55e, #16a34a); }
+.quality-bar.quality-mid  { background: linear-gradient(90deg, #f59e0b, #d97706); }
+.quality-bar.quality-low  { background: linear-gradient(90deg, #ef4444, #dc2626); }
+
+/* Quality Badge — μικρό ποσοστό στο article meta */
+.quality-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.5px;
+}
+.quality-badge.quality-high { color: #22c55e; background: rgba(34, 197, 94, 0.1); }
+.quality-badge.quality-mid  { color: #f59e0b; background: rgba(245, 158, 11, 0.1); }
+.quality-badge.quality-low  { color: #ef4444; background: rgba(239, 68, 68, 0.1); }
+
+/* Filter Toggle Active State */
+.premium-btn.filter-active {
+    background: var(--highlight);
+    color: var(--bg-dark);
+    border-color: var(--highlight);
+}
+
 /* Modals */
 .modal-overlay {
     position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
@@ -405,4 +453,114 @@ li.category-header.active {
     }
     .masonry { columns: 1; }
     .top-bar { flex-direction: column; gap: 16px; align-items: flex-start; }
+}
+
+/* 3D Stacks Visualizer styles */
+.stacks-visualizer {
+    width: 100%;
+    height: 90px;
+    margin-bottom: 5px;
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--panel-border);
+}
+
+#stacks-3d-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.stacks-visualizer-tooltip {
+    position: absolute;
+    bottom: 4px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 10px;
+    color: var(--text-muted);
+    font-style: italic;
+    pointer-events: none;
+    transition: opacity 0.2s;
+    opacity: 0.8;
+}
+
+/* Stack Accordion Groups */
+.stack-group {
+    margin-bottom: 8px;
+    border-radius: 8px;
+    border: 1px solid rgba(0, 180, 216, 0.08);
+    background: rgba(0, 0, 0, 0.15);
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.stack-group:hover {
+    border-color: rgba(0, 180, 216, 0.25);
+    background: rgba(0, 0, 0, 0.25);
+}
+
+.stack-group-header {
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+    color: var(--text-main);
+    font-weight: 500;
+    font-size: 13px;
+    background: rgba(0, 180, 216, 0.02);
+    transition: background 0.2s, color 0.2s;
+    font-family: var(--font-sans);
+}
+
+.stack-group-header:hover {
+    background: rgba(0, 180, 216, 0.08);
+    color: var(--accent-hover);
+}
+
+.stack-group-header .stack-name {
+    flex-grow: 1;
+    letter-spacing: 0.5px;
+}
+
+.stack-group-header .stack-arrow {
+    transition: transform 0.3s ease;
+    font-size: 11px;
+    color: var(--text-muted);
+    display: inline-block;
+}
+
+.stack-group-header.collapsed .stack-arrow {
+    transform: rotate(-90deg);
+}
+
+.stack-category-list {
+    list-style: none;
+    padding: 2px 6px;
+    max-height: 500px;
+    transition: max-height 0.3s ease-out, opacity 0.2s ease, padding 0.3s ease;
+    opacity: 1;
+    border-top: 1px solid rgba(0, 180, 216, 0.05);
+}
+
+.stack-category-list.collapsed {
+    max-height: 0;
+    padding: 0 6px;
+    overflow: hidden;
+    opacity: 0;
+    pointer-events: none;
+    border-top-color: transparent;
+}
+
+/* Category list item override within stacks */
+.stack-category-list li.category-header {
+    padding: 8px 12px;
+    margin-bottom: 2px;
+    font-size: 13px;
+    border-radius: 6px;
+    text-transform: none;
 }

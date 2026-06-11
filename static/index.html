@@ -11,7 +11,7 @@
     <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
-    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="stylesheet" href="/static/styles.css?v=1.2">
 </head>
 <body>
     <!-- Three.js Background -->
@@ -28,6 +28,12 @@
             <div class="brand">
                 <i class="ph-fill ph-lighthouse"></i>
                 <span>Pharos</span>
+            </div>
+
+            <!-- 3D Stacks Visualizer (Fixed) -->
+            <div class="stacks-visualizer">
+                <canvas id="stacks-3d-canvas"></canvas>
+                <div class="stacks-visualizer-tooltip" id="stacks-3d-tooltip">Select an Archipelago</div>
             </div>
 
             <nav class="categories-nav">
@@ -57,7 +63,7 @@
         <main class="feed-stream">
             <header class="top-bar glass-panel">
                 <div class="current-view">
-                    <h1>Currents</h1>
+                    <h1>Open Sea</h1>
                     <p class="subtitle">News currents from the open sea</p>
                 </div>
                 <div class="controls">
@@ -109,6 +115,7 @@
                 <select id="lang-select" class="form-input">
                     <option value="">Original Language</option>
                     <option value="el">Greek (Ελληνικά)</option>
+                    <option value="en">English (Αγγλικά)</option>
                 </select>
             </div>
 
@@ -137,9 +144,10 @@
         </div>
     </div>
 
-    <script src="/static/three_bg.js"></script>
-    <script src="/static/lighthouse_spinner.js"></script>
+    <script src="/static/three_bg.js?v=1.2"></script>
+    <script src="/static/lighthouse_spinner.js?v=1.2"></script>
+    <script src="/static/stacks_3d.js?v=1.2"></script>
 
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=1.3"></script>
 </body>
 </html>
