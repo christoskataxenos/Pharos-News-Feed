@@ -46,6 +46,14 @@ class Article(Base):
     feed = relationship('Feed', back_populates='articles')
     interactions = relationship('UserInteraction', back_populates='article', cascade="all, delete-orphan")
 
+class AdminUser(Base):
+    __tablename__ = 'admin_users'
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(100), nullable=False, unique=True)
+    password_hash = Column(String(255), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 class UserInteraction(Base):
     __tablename__ = 'user_interactions'
     

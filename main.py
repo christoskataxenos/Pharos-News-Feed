@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, BackgroundTasks, Request, HTTPException
+from fastapi import FastAPI, Depends, BackgroundTasks, Request, HTTPException, Form
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import secrets
 import os
@@ -7,10 +7,11 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import desc, func, text
+from passlib.context import CryptContext
 from pydantic import BaseModel
 from typing import List, Optional
 
@@ -19,8 +20,9 @@ from readability import Document
 from deep_translator import GoogleTranslator
 import aiohttp
 
+import database
 from database import get_db, engine, Base, AsyncSessionLocal
-from models import Article, Category, Feed, UserInteraction
+from models import Article, Category, Feed, UserInteraction, AdminUser
 from fetcher import update_all_feeds
 
 limiter = Limiter(key_func=get_remote_address)
@@ -29,22 +31,181 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 security = HTTPBasic()
-ADMIN_USER = os.getenv("ADMIN_USERNAME", "admin")
-ADMIN_PASS = os.getenv("ADMIN_PASSWORD", "secret")
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-def verify_admin(credentials: HTTPBasicCredentials = Depends(security)):
-    correct_username = secrets.compare_digest(credentials.username, ADMIN_USER)
-    correct_password = secrets.compare_digest(credentials.password, ADMIN_PASS)
-    if not (correct_username and correct_password):
-        raise HTTPException(
-            status_code=401,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Basic"},
+
+def _env_credentials() -> Optional[tuple[str, str]]:
+    """Return (username, password) if both admin env vars are set, else None.
+
+    Env vars always take priority over the DB-backed admin (advanced/IaC mode).
+    """
+    user = os.getenv("ADMIN_USERNAME")
+    password = os.getenv("ADMIN_PASSWORD")
+    if user and password:
+        return user, password
+    return None
+
+
+async def is_setup_mode(db: AsyncSession) -> bool:
+    """Setup mode is active only when there are no env credentials AND no AdminUser record."""
+    if _env_credentials() is not None:
+        return False
+    result = await db.execute(select(func.count(AdminUser.id)))
+    return result.scalar_one() == 0
+
+
+async def _setup_mode_via_factory() -> bool:
+    """Setup-mode check for the middleware, which cannot use Depends()."""
+    if _env_credentials() is not None:
+        return False
+    async with database.AsyncSessionLocal() as session:
+        result = await session.execute(select(func.count(AdminUser.id)))
+        return result.scalar_one() == 0
+
+
+async def verify_admin(
+    credentials: HTTPBasicCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db),
+):
+    env = _env_credentials()
+    if env is not None:
+        env_user, env_pass = env
+        correct_username = secrets.compare_digest(credentials.username, env_user)
+        correct_password = secrets.compare_digest(credentials.password, env_pass)
+        if correct_username and correct_password:
+            return credentials.username
+    else:
+        result = await db.execute(
+            select(AdminUser).where(AdminUser.username == credentials.username)
         )
-    return credentials.username
+        admin = result.scalar_one_or_none()
+        if admin and pwd_context.verify(credentials.password, admin.password_hash):
+            return credentials.username
+
+    raise HTTPException(
+        status_code=401,
+        detail="Incorrect username or password",
+        headers={"WWW-Authenticate": "Basic"},
+    )
+
+
+@app.middleware("http")
+async def setup_redirect_middleware(request: Request, call_next):
+    """Redirect every request to /setup until the first admin exists."""
+    path = request.url.path
+    if path.startswith("/setup") or path.startswith("/static"):
+        return await call_next(request)
+    if await _setup_mode_via_factory():
+        return RedirectResponse(url="/setup", status_code=307)
+    return await call_next(request)
+
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+SETUP_PAGE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pharos | First-Run Setup</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:wght@600&display=swap" rel="stylesheet">
+    <style>
+        :root {{
+            --bg-dark: #05101a;
+            --panel-bg: rgba(10, 25, 40, 0.7);
+            --panel-border: rgba(0, 180, 216, 0.12);
+            --text-main: #E2E8F0;
+            --text-muted: #8FA5BA;
+            --accent: #00B4D8;
+            --accent-hover: #48CAE4;
+        }}
+        * {{ box-sizing: border-box; }}
+        body {{
+            margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+            background: var(--bg-dark); color: var(--text-main); font-family: 'Inter', sans-serif;
+            background-image: radial-gradient(circle at 20% 20%, rgba(0,180,216,0.15), transparent 40%),
+                              radial-gradient(circle at 80% 80%, rgba(244,162,97,0.08), transparent 40%);
+        }}
+        .card {{
+            width: 100%; max-width: 420px; padding: 40px;
+            background: var(--panel-bg); border: 1px solid var(--panel-border);
+            border-radius: 18px; backdrop-filter: blur(18px); box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+        }}
+        h1 {{ font-family: 'Playfair Display', serif; margin: 0 0 6px; font-size: 28px; }}
+        p.sub {{ color: var(--text-muted); margin: 0 0 26px; font-size: 14px; }}
+        label {{ display: block; font-size: 13px; color: var(--text-muted); margin: 16px 0 6px; text-transform: uppercase; letter-spacing: 1px; }}
+        input {{
+            width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--panel-border);
+            background: rgba(5,16,26,0.6); color: var(--text-main); font-size: 15px; outline: none;
+        }}
+        input:focus {{ border-color: var(--accent); }}
+        button {{
+            margin-top: 26px; width: 100%; padding: 13px; border: none; border-radius: 10px;
+            background: var(--accent); color: var(--bg-dark); font-weight: 600; font-size: 15px; cursor: pointer;
+            transition: background 0.2s ease;
+        }}
+        button:hover {{ background: var(--accent-hover); }}
+        .error {{ background: rgba(220,50,50,0.15); border: 1px solid rgba(220,50,50,0.4); color: #ffb3b3;
+                  padding: 10px 14px; border-radius: 10px; font-size: 14px; margin-bottom: 18px; }}
+        .brand {{ color: var(--accent); font-size: 13px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 18px; }}
+    </style>
+</head>
+<body>
+    <form class="card" method="post" action="/setup">
+        <div class="brand">Pharos</div>
+        <h1>Welcome aboard</h1>
+        <p class="sub">Create your administrator account to secure feed management. This screen appears only once.</p>
+        {error_block}
+        <label for="username">Username</label>
+        <input id="username" name="username" type="text" autocomplete="username" required autofocus>
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="new-password" required>
+        <label for="confirm_password">Confirm Password</label>
+        <input id="confirm_password" name="confirm_password" type="password" autocomplete="new-password" required>
+        <button type="submit">Create admin &amp; continue</button>
+    </form>
+</body>
+</html>"""
+
+
+def _render_setup(error: Optional[str] = None) -> HTMLResponse:
+    error_block = f'<div class="error">{error}</div>' if error else ""
+    return HTMLResponse(SETUP_PAGE.format(error_block=error_block))
+
+
+@app.get("/setup", response_class=HTMLResponse)
+async def setup_form(request: Request, db: AsyncSession = Depends(get_db)):
+    if not await is_setup_mode(db):
+        return RedirectResponse(url="/", status_code=307)
+    return _render_setup()
+
+
+@app.post("/setup")
+async def setup_submit(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    confirm_password: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    # Permanently locked once an admin exists.
+    if not await is_setup_mode(db):
+        raise HTTPException(status_code=403, detail="Setup has already been completed.")
+
+    username = username.strip()
+    if len(username) < 3:
+        return _render_setup("Username must be at least 3 characters long.")
+    if len(password) < 8:
+        return _render_setup("Password must be at least 8 characters long.")
+    if password != confirm_password:
+        return _render_setup("Passwords do not match.")
+
+    admin = AdminUser(username=username, password_hash=pwd_context.hash(password))
+    db.add(admin)
+    await db.commit()
+    return RedirectResponse(url="/", status_code=303)
 
 @app.on_event("startup")
 async def on_startup():
@@ -122,7 +283,7 @@ async def get_init_data(request: Request, db: AsyncSession = Depends(get_db)):
 
 @app.post("/api/refresh")
 @limiter.limit("10/minute")
-async def refresh_feeds(request: Request, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+async def refresh_feeds(request: Request, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db), admin: str = Depends(verify_admin)):
     # Run fetch asynchronously in background
     background_tasks.add_task(update_all_feeds)
     return {"status": "started", "message": "High-speed refresh started in background!"}
@@ -405,7 +566,7 @@ async def read_article(request: Request, article_id: int, lang: str = None, db: 
         return {"error": str(e)}
 
 @app.delete("/api/feeds/{feed_id}")
-async def delete_feed(feed_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_feed(feed_id: int, db: AsyncSession = Depends(get_db), admin: str = Depends(verify_admin)):
     feed_res = await db.execute(select(Feed).where(Feed.id == feed_id))
     feed = feed_res.scalar_one_or_none()
     if feed:
@@ -413,7 +574,6 @@ async def delete_feed(feed_id: int, db: AsyncSession = Depends(get_db)):
         await db.commit()
     return {"status": "success"}
 
-from pydantic import BaseModel
 import feedparser
 
 class FeedCreate(BaseModel):
@@ -477,7 +637,7 @@ async def discover_feed(url: str) -> tuple[str, str]:
 
 @app.post("/api/feeds")
 @limiter.limit("20/minute")
-async def add_feed(request: Request, feed: FeedCreate, db: AsyncSession = Depends(get_db)):
+async def add_feed(request: Request, feed: FeedCreate, db: AsyncSession = Depends(get_db), admin: str = Depends(verify_admin)):
     # Αναζήτηση αν η κατηγορία υπάρχει ήδη στη βάση με βάση το όνομα
     category_name_stripped = feed.category_name.strip()
     stmt = select(Category).where(Category.name == category_name_stripped)
