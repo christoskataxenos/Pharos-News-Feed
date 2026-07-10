@@ -5,3 +5,6 @@ __pycache__/
 *.db-wal
 .env
 .pytest_cache/
+.coverage
+coverage.xml
+.ruff_cache/

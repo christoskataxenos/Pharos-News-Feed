@@ -1,6 +1,5 @@
 import re
 import unicodedata
-from typing import Optional
 
 
 # =====================================================================
@@ -251,12 +250,20 @@ def _check_content_quality(title: str, summary: str | None) -> tuple[float, list
     elif len(title) > 130:
         penalty += 0.1
         flags.append("long_title")
-        
-    # Έλεγχος ύπαρξης summary
-    if not summary or len(summary.strip()) < 20:
+
+    # Έλεγχος ύπαρξης summary — διάκριση μεταξύ εντελώς κενού και απλά κοντού
+    if not summary or not summary.strip():
+        penalty += 0.15
+        flags.append("empty_summary")
+    elif len(summary.strip()) < 20:
         penalty += 0.1
         flags.append("short_summary")
-        
+
+    # Τίτλος ταυτόσημος με το summary — ένδειξη ελλιπούς/auto-generated περιεχομένου
+    if summary and title.strip() and title.strip().lower() == summary.strip().lower():
+        penalty += 0.15
+        flags.append("title_summary_identical")
+
     return min(penalty, 0.4), flags
 
 

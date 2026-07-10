@@ -3,7 +3,7 @@ import aiohttp
 import sys
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from database import AsyncSessionLocal, engine
+from database import AsyncSessionLocal
 from models import Article
 from fetcher import fetch_og_image
 

@@ -1,5 +1,4 @@
 import unittest
-import asyncio
 import aiohttp
 from unittest.mock import AsyncMock, MagicMock
 from fetcher import fetch_og_image, clean_translated_url

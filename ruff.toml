@@ -1,0 +1,19 @@
+line-length = 120
+target-version = "py311"
+
+exclude = ["venv", "graphify-out", ".git"]
+
+[lint]
+# Pyflakes (F) catches real bugs (undefined names, unused imports).
+# A pragmatic subset of pycodestyle (E/W) is enabled; rules that clash with
+# SQLAlchemy idioms or the project's existing style are ignored below.
+select = ["F", "E"]
+ignore = [
+    "E402",  # module-level import not at top (intentional lazy imports)
+    "E501",  # line length handled by `line-length`
+    "E701",  # multiple statements on one line (colon) — existing style
+    "E711",  # comparison to None — required by SQLAlchemy filters
+    "E712",  # comparison to True/False — required by SQLAlchemy filters
+    "E722",  # bare except — existing best-effort fetch fallbacks
+    "E741",  # ambiguous variable names
+]

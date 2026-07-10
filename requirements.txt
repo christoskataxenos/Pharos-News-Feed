@@ -10,3 +10,6 @@ readability-lxml
 deep-translator
 aiosqlite
 rapidfuzz
+passlib[bcrypt]
+bcrypt<4.1
+python-multipart
