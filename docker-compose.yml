@@ -1,0 +1,16 @@
+services:
+  pharos:
+    build: .
+    container_name: pharos
+    ports:
+      - "8000:8000"
+    volumes:
+      - pharos_data:/app/data
+    environment:
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-secret}
+      - DATABASE_URL=sqlite+aiosqlite:////app/data/feedhub.db
+    restart: unless-stopped
+
+volumes:
+  pharos_data:

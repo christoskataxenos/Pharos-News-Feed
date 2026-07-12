@@ -245,7 +245,10 @@ def _check_content_quality(title: str, summary: str | None) -> tuple[float, list
     flags: list[str] = []
 
     # Έλεγχος μήκους τίτλου
-    if len(title) < 15:
+    if not title or len(title.strip()) == 0:
+        penalty += 0.4
+        flags.append("empty_title")
+    elif len(title) < 15:
         penalty += 0.2
         flags.append("short_title")
     elif len(title) > 130:
@@ -253,9 +256,17 @@ def _check_content_quality(title: str, summary: str | None) -> tuple[float, list
         flags.append("long_title")
         
     # Έλεγχος ύπαρξης summary
-    if not summary or len(summary.strip()) < 20:
+    if not summary or len(summary.strip()) == 0:
+        penalty += 0.2
+        flags.append("empty_summary")
+    elif len(summary.strip()) < 20:
         penalty += 0.1
         flags.append("short_summary")
+
+    # Έλεγχος αν τίτλος και summary είναι ίδια
+    if title and summary and title.strip().lower() == summary.strip().lower():
+        penalty += 0.3
+        flags.append("title_summary_identical")
         
     return min(penalty, 0.4), flags
 

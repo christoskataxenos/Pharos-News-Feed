@@ -87,6 +87,9 @@ document.addEventListener("DOMContentLoaded", () => {
         let endpoint = `/api/article/${id}/read` + (lang ? `?lang=${lang}` : "");
         
         try {
+            if (!navigator.onLine) {
+                throw new Error("Offline");
+            }
             const res = await fetch(endpoint);
             const data = await res.json();
             
@@ -116,8 +119,29 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (originalHome) originalHome.insertBefore(canvas, originalHome.firstChild);
             }
             
-            document.getElementById('reader-title').textContent = "Error";
-            document.getElementById('reader-body').innerHTML = `<p style="color:#ef4444">Failed to extract content: ${e.message}</p>`;
+            // Offline/Fail Fallback: Try loading from IndexedDB
+            const offlineArt = await getArticleFromIndexedDB(id);
+            if (offlineArt) {
+                document.getElementById('reader-title').textContent = offlineArt.title;
+                document.getElementById('reader-body').innerHTML = `
+                    <div style="background: rgba(249, 115, 22, 0.1); border: 1px solid rgba(249, 115, 22, 0.2); color: #f97316; padding: 12px 16px; border-radius: 8px; font-size: 14px; margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
+                        <i class="ph ph-wifi-slash" style="font-size: 20px;"></i>
+                        <span>Offline Mode: Εμφάνιση της περίληψης του άρθρου. Συνδεθείτε στο διαδίκτυο για να φορτώσει όλο το κείμενο.</span>
+                    </div>
+                    <div class="summary-content">
+                        ${offlineArt.summary || 'Δεν υπάρχει διαθέσιμη περίληψη.'}
+                    </div>
+                `;
+                // Queue mark read action
+                queueOfflineAction("read", id);
+                
+                // Update local UI state
+                const card = document.querySelector(`.article-card[data-article-id="${id}"]`);
+                if (card) card.classList.add("is-read");
+            } else {
+                document.getElementById('reader-title').textContent = "Error";
+                document.getElementById('reader-body').innerHTML = `<p style="color:#ef4444">Failed to extract content: ${e.message}</p>`;
+            }
         }
     }
 
@@ -206,10 +230,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function initApp() {
         try {
-            const res = await fetch("/api/init_data");
-            const data = await res.json();
+            let data;
+            if (navigator.onLine) {
+                const res = await fetch("/api/init_data");
+                data = await res.json();
+                localStorage.setItem("pharos_categories_cache", JSON.stringify(data));
+            } else {
+                data = JSON.parse(localStorage.getItem("pharos_categories_cache") || "[]");
+            }
             globalFeeds = data;
             renderCategories(data);
+            renderOfflineCategoriesOptions(data);
             
             let totalFeeds = 0;
             data.forEach(cat => totalFeeds += cat.feeds.length);
@@ -250,6 +281,9 @@ document.addEventListener("DOMContentLoaded", () => {
         if (showFiltered) url += `show_filtered=true`;
 
         try {
+            if (!navigator.onLine) {
+                throw new Error("Offline");
+            }
             const res = await fetch(url);
             const data = await res.json();
             
@@ -260,6 +294,11 @@ document.addEventListener("DOMContentLoaded", () => {
             }
             
             renderArticles(data.articles, reset);
+
+            // Update offline cache for selected categories
+            if (reset) {
+                cacheTopArticlesOffline();
+            }
             
             const totalArticlesEl = document.getElementById("total-articles-count");
             if (totalArticlesEl && data.total !== undefined) {
@@ -267,7 +306,35 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         } catch (e) {
             console.error("Failed to fetch articles", e);
-            if (reset) articleGrid.innerHTML = `<p style="text-align:center; color: var(--text-muted); width: 100%;">Failed to load feed. Is the server running?</p>`;
+            if (reset) {
+                const offlineArticles = await getOfflineArticles();
+                if (offlineArticles.length > 0) {
+                    let filtered = offlineArticles;
+                    if (catId) {
+                        const targetIds = (typeof catId === 'string') 
+                            ? catId.split(',').map(x => parseInt(x.trim()))
+                            : [catId];
+                        
+                        filtered = offlineArticles.filter(art => {
+                            return globalFeeds.some(cat => {
+                                if (!targetIds.includes(cat.id)) return false;
+                                return cat.feeds.some(f => f.title === art.feed_title);
+                            });
+                        });
+                    }
+                    renderArticles(filtered, true);
+                    hasMore = false;
+                    const totalArticlesEl = document.getElementById("total-articles-count");
+                    if (totalArticlesEl) {
+                        totalArticlesEl.innerText = filtered.length;
+                    }
+                } else {
+                    articleGrid.innerHTML = `<p style="text-align:center; color: var(--text-muted); width: 100%; margin-top:40px;">Failed to load feed. You are offline and have no cached articles.</p>`;
+                }
+            } else {
+                const loader = document.querySelector(".skeleton-loader-more");
+                if (loader) loader.remove();
+            }
         } finally {
             isLoading = false;
         }
@@ -307,6 +374,7 @@ document.addEventListener("DOMContentLoaded", () => {
         articles.forEach((art, index) => {
             const card = document.createElement("div");
             card.className = "article-card glass-panel" + (art.is_read ? " is-read" : "");
+            card.setAttribute("data-article-id", art.id);
             
             const imageHtml = art.image_url 
                 ? `<img src="${art.image_url}" alt="Cover" class="article-image" loading="lazy" onerror="this.onerror=null; this.outerHTML='<div class=\\'article-image\\' style=\\'background: linear-gradient(135deg, rgba(10, 25, 40, 0.8), rgba(0, 180, 216, 0.2)); display: flex; align-items:center; justify-content:center;\\'><i class=\\'ph ph-image-broken\\' style=\\'font-size: 48px; color: rgba(255,255,255,0.15);\\'></i></div>';">` 
@@ -587,6 +655,343 @@ document.addEventListener("DOMContentLoaded", () => {
         const lang = langSelect.value;
         openReader(currentArticleId, document.getElementById('reader-original-link').href);
     };
+
+    // =====================================================================
+    // PWA & IndexedDB & Reader Mode Customizer Logic
+    // =====================================================================
+
+    const DB_NAME = "pharos-db";
+    const DB_VERSION = 1;
+    let dbInstance = null;
+
+    function initDB() {
+        return new Promise((resolve) => {
+            const request = indexedDB.open(DB_NAME, DB_VERSION);
+            request.onerror = (e) => {
+                console.error("IndexedDB error:", e);
+                resolve(null);
+            };
+            request.onsuccess = (e) => {
+                dbInstance = e.target.result;
+                resolve(dbInstance);
+            };
+            request.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains("articles")) {
+                    db.createObjectStore("articles", { keyPath: "id" });
+                }
+                if (!db.objectStoreNames.contains("pending-actions")) {
+                    db.createObjectStore("pending-actions", { autoIncrement: true });
+                }
+            };
+        });
+    }
+
+    function saveArticlesToOffline(articles) {
+        if (!dbInstance) return;
+        const tx = dbInstance.transaction("articles", "readwrite");
+        const store = tx.objectStore("articles");
+        articles.forEach(art => {
+            store.put(art);
+        });
+    }
+
+    function getOfflineArticles() {
+        return new Promise((resolve) => {
+            if (!dbInstance) return resolve([]);
+            const tx = dbInstance.transaction("articles", "readonly");
+            const store = tx.objectStore("articles");
+            const request = store.getAll();
+            request.onsuccess = () => {
+                const sorted = request.result.sort((a, b) => new Date(b.raw_published) - new Date(a.raw_published));
+                resolve(sorted);
+            };
+            request.onerror = () => resolve([]);
+        });
+    }
+
+    function getArticleFromIndexedDB(id) {
+        return new Promise((resolve) => {
+            if (!dbInstance) return resolve(null);
+            const tx = dbInstance.transaction("articles", "readonly");
+            const store = tx.objectStore("articles");
+            const request = store.get(id);
+            request.onsuccess = () => resolve(request.result || null);
+            request.onerror = () => resolve(null);
+        });
+    }
+
+    function pruneOfflineArticles(maxLimit = 100) {
+        if (!dbInstance) return;
+        const tx = dbInstance.transaction("articles", "readwrite");
+        const store = tx.objectStore("articles");
+        const request = store.getAll();
+        request.onsuccess = () => {
+            const all = request.result;
+            if (all.length <= maxLimit) return;
+            all.sort((a, b) => new Date(b.raw_published) - new Date(a.raw_published));
+            const toDelete = all.slice(maxLimit);
+            const deleteTx = dbInstance.transaction("articles", "readwrite");
+            const deleteStore = deleteTx.objectStore("articles");
+            toDelete.forEach(art => {
+                deleteStore.delete(art.id);
+            });
+        };
+    }
+
+    function clearOfflineDB() {
+        return new Promise((resolve) => {
+            if (!dbInstance) return resolve();
+            const tx = dbInstance.transaction("articles", "readwrite");
+            const store = tx.objectStore("articles");
+            const request = store.clear();
+            request.onsuccess = () => {
+                console.log("Offline database cleared.");
+                resolve();
+            };
+        });
+    }
+
+    function queueOfflineAction(action, articleId) {
+        if (!dbInstance) return;
+        const tx = dbInstance.transaction("pending-actions", "readwrite");
+        const store = tx.objectStore("pending-actions");
+        store.add({ action, articleId, timestamp: Date.now() });
+    }
+
+    async function syncPendingActions() {
+        if (!dbInstance || !navigator.onLine) return;
+        const tx = dbInstance.transaction("pending-actions", "readonly");
+        const store = tx.objectStore("pending-actions");
+        const request = store.getAll();
+        
+        request.onsuccess = async () => {
+            const actions = request.result;
+            if (actions.length === 0) return;
+            
+            const statusEl = document.getElementById("network-status");
+            if (statusEl) {
+                statusEl.className = "network-status syncing";
+                statusEl.querySelector(".status-text").textContent = "Συγχρονισμός...";
+            }
+            
+            for (const item of actions) {
+                try {
+                    let endpoint = "";
+                    if (item.action === "read") {
+                        endpoint = `/api/mark_read/${item.articleId}`;
+                    }
+                    if (endpoint) {
+                        await fetch(endpoint, { method: "POST" });
+                    }
+                } catch (e) {
+                    console.error("Failed to sync offline action:", item, e);
+                }
+            }
+            
+            const clearTx = dbInstance.transaction("pending-actions", "readwrite");
+            clearTx.objectStore("pending-actions").clear();
+            
+            updateNetworkStatus();
+        };
+    }
+
+    function updateNetworkStatus() {
+        const statusEl = document.getElementById("network-status");
+        if (!statusEl) return;
+        
+        if (navigator.onLine) {
+            statusEl.className = "network-status online";
+            statusEl.querySelector(".status-text").textContent = "Online";
+            syncPendingActions();
+        } else {
+            statusEl.className = "network-status offline";
+            statusEl.querySelector(".status-text").textContent = "Offline";
+        }
+    }
+
+    window.addEventListener("online", updateNetworkStatus);
+    window.addEventListener("offline", updateNetworkStatus);
+
+    function renderOfflineCategoriesOptions(categories) {
+        const container = document.getElementById("offline-categories-container");
+        if (!container) return;
+        
+        container.innerHTML = "";
+        const selectedCats = JSON.parse(localStorage.getItem("pharos_offline_cats") || "[]");
+        
+        categories.forEach(cat => {
+            const chip = document.createElement("label");
+            const isActive = selectedCats.includes(cat.id) || selectedCats.length === 0;
+            chip.className = `offline-cat-chip${isActive ? " active" : ""}`;
+            chip.innerHTML = `
+                 <input type="checkbox" value="${cat.id}" ${isActive ? "checked" : ""}>
+                 <span>${cat.name}</span>
+            `;
+            
+            chip.querySelector("input").addEventListener("change", (e) => {
+                let currentSelected = JSON.parse(localStorage.getItem("pharos_offline_cats") || "[]");
+                const catId = parseInt(e.target.value);
+                
+                if (e.target.checked) {
+                    if (!currentSelected.includes(catId)) currentSelected.push(catId);
+                    chip.classList.add("active");
+                } else {
+                    currentSelected = currentSelected.filter(id => id !== catId);
+                    chip.classList.remove("active");
+                }
+                
+                localStorage.setItem("pharos_offline_cats", JSON.stringify(currentSelected));
+                cacheTopArticlesOffline();
+            });
+            
+            container.appendChild(chip);
+        });
+    }
+
+    async function cacheTopArticlesOffline() {
+        if (!dbInstance || !navigator.onLine) return;
+        
+        const selectedCats = JSON.parse(localStorage.getItem("pharos_offline_cats") || "[]");
+        let url = `/api/articles?`;
+        if (selectedCats.length > 0) {
+            url += `category_ids=${selectedCats.join(",")}&`;
+        }
+        
+        try {
+            const res = await fetch(url);
+            const data = await res.json();
+            if (data.articles) {
+                saveArticlesToOffline(data.articles);
+                pruneOfflineArticles(100);
+                
+                // Prefetch images for service worker caching
+                data.articles.forEach(art => {
+                    if (art.image_url) {
+                        fetch(art.image_url, { mode: "no-cors" }).catch(() => {});
+                    }
+                });
+            }
+        } catch (e) {
+            console.error("Failed to cache offline articles", e);
+        }
+    }
+
+    function initReaderCustomizer() {
+        const btnSerif = document.getElementById("reader-font-serif");
+        const btnSans = document.getElementById("reader-font-sans");
+        const btnZoomOut = document.getElementById("reader-zoom-out");
+        const btnZoomIn = document.getElementById("reader-zoom-in");
+        const zoomLevelText = document.getElementById("reader-zoom-level");
+        const readerBody = document.getElementById("reader-body");
+        const readerContent = document.querySelector(".reader-content");
+        const themeBtns = document.querySelectorAll(".theme-btn");
+
+        let savedFont = localStorage.getItem("pharos_reader_font") || "serif";
+        let savedZoom = parseInt(localStorage.getItem("pharos_reader_zoom") || "100");
+        let savedTheme = localStorage.getItem("pharos_reader_theme") || "light";
+
+        function applySettings() {
+            if (savedFont === "serif") {
+                readerBody.classList.remove("font-sans");
+                readerBody.classList.add("font-serif");
+                if (btnSerif) btnSerif.classList.add("active");
+                if (btnSans) btnSans.classList.remove("active");
+            } else {
+                readerBody.classList.remove("font-serif");
+                readerBody.classList.add("font-sans");
+                if (btnSans) btnSans.classList.add("active");
+                if (btnSerif) btnSerif.classList.remove("active");
+            }
+
+            document.documentElement.style.setProperty("--reader-font-size", `${savedZoom * 0.18}px`);
+            if (zoomLevelText) zoomLevelText.textContent = `${savedZoom}%`;
+
+            if (readerContent) {
+                readerContent.className = "modal-content glass-panel reader-content " + `theme-${savedTheme}`;
+            }
+            themeBtns.forEach(btn => {
+                if (btn.getAttribute("data-theme") === savedTheme) {
+                    btn.classList.add("active");
+                } else {
+                    btn.classList.remove("active");
+                }
+            });
+        }
+
+        applySettings();
+
+        if (btnSerif) {
+            btnSerif.onclick = () => {
+                savedFont = "serif";
+                localStorage.setItem("pharos_reader_font", "serif");
+                applySettings();
+            };
+        }
+        if (btnSans) {
+            btnSans.onclick = () => {
+                savedFont = "sans";
+                localStorage.setItem("pharos_reader_font", "sans");
+                applySettings();
+            };
+        }
+
+        if (btnZoomOut) {
+            btnZoomOut.onclick = () => {
+                if (savedZoom > 60) {
+                    savedZoom -= 10;
+                    localStorage.setItem("pharos_reader_zoom", savedZoom);
+                    applySettings();
+                }
+            };
+        }
+        if (btnZoomIn) {
+            btnZoomIn.onclick = () => {
+                if (savedZoom < 200) {
+                    savedZoom += 10;
+                    localStorage.setItem("pharos_reader_zoom", savedZoom);
+                    applySettings();
+                }
+            };
+        }
+
+        themeBtns.forEach(btn => {
+            btn.onclick = () => {
+                savedTheme = btn.getAttribute("data-theme");
+                localStorage.setItem("pharos_reader_theme", savedTheme);
+                applySettings();
+            };
+        });
+    }
+
+    // Clear Offline Cache Button Click
+    const clearOfflineBtn = document.getElementById("clear-offline-btn");
+    if (clearOfflineBtn) {
+        clearOfflineBtn.onclick = async () => {
+            if (confirm("Θέλετε σίγουρα να διαγράψετε όλη την offline βάση και τις αποθηκευμένες εικόνες;")) {
+                await clearOfflineDB();
+                if ('caches' in window) {
+                    await caches.delete("pharos-images-v1");
+                }
+                alert("Η offline cache καθαρίστηκε με επιτυχία!");
+            }
+        };
+    }
+
+    // Register Service Worker
+    if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+            navigator.serviceWorker.register("/static/sw.js")
+                .then(reg => console.log("Service Worker registered successfully:", reg.scope))
+                .catch(err => console.error("Service Worker registration failed:", err));
+        });
+    }
+
+    // Initialization
+    initDB().then(() => {
+        updateNetworkStatus();
+        initReaderCustomizer();
+    });
 
 });
 

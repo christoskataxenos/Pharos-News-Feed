@@ -4,6 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pharos | Pelagos</title>
+    <!-- PWA & Mobile Meta Tags -->
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Pharos">
+    <link rel="apple-touch-icon" href="https://img.icons8.com/color/192/lighthouse.png">
+    <meta name="theme-color" content="#0c0d12">
     <!-- Modern Typography -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -67,6 +74,10 @@
                     <p class="subtitle">News currents from the open sea</p>
                 </div>
                 <div class="controls">
+                    <div id="network-status" class="network-status online">
+                        <span class="status-dot"></span>
+                        <span class="status-text">Online</span>
+                    </div>
                     <button id="refresh-btn" class="premium-btn">
                         <i class="ph ph-arrows-clockwise"></i> Scan Horizon
                     </button>
@@ -95,6 +106,24 @@
                 <div class="reader-actions">
                     <button id="translate-btn" class="premium-btn"><i class="ph ph-translate"></i> Translate</button>
                     <a id="reader-original-link" href="#" target="_blank" class="premium-btn"><i class="ph ph-arrow-square-out"></i> Original</a>
+                </div>
+            </div>
+            <div class="reader-toolbar glass-panel">
+                <div class="toolbar-group">
+                    <button id="reader-font-serif" class="tool-btn active">Serif</button>
+                    <button id="reader-font-sans" class="tool-btn">Sans</button>
+                </div>
+                <div class="divider"></div>
+                <div class="toolbar-group">
+                    <button id="reader-zoom-out" class="tool-btn"><i class="ph ph-minus"></i></button>
+                    <span id="reader-zoom-level">100%</span>
+                    <button id="reader-zoom-in" class="tool-btn"><i class="ph ph-plus"></i></button>
+                </div>
+                <div class="divider"></div>
+                <div class="toolbar-group theme-selectors">
+                    <button class="theme-btn theme-light active" data-theme="light" title="Light"></button>
+                    <button class="theme-btn theme-sepia" data-theme="sepia" title="Sepia"></button>
+                    <button class="theme-btn theme-dark" data-theme="dark" title="Dark"></button>
                 </div>
             </div>
             <div id="reader-body" class="reader-body">
@@ -135,6 +164,23 @@
                     <!-- Feeds loaded here -->
                 </ul>
             </div>
+
+            <div class="settings-section">
+                <h3>Offline Storage Settings</h3>
+                <div class="form-group" style="flex-direction: column; align-items: flex-start; gap: 12px; width: 100%;">
+                    <p class="section-desc" style="font-size: 13px; color: var(--text-dim); line-height: 1.5; margin: 0;">
+                        Επιλέξτε ποιες κατηγορίες θέλετε να αποθηκεύονται τοπικά για offline ανάγνωση (έως 100 πιο πρόσφατα άρθρα):
+                    </p>
+                    <div id="offline-categories-container" style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; width: 100%;">
+                        <!-- Populated dynamically via JS -->
+                    </div>
+                    <button id="clear-offline-btn" class="premium-btn" style="background: rgba(220, 53, 69, 0.2); border-color: rgba(220, 53, 69, 0.4); justify-content: center; width: 100%; margin-top: 8px;">
+                        <i class="ph ph-trash"></i> Καθαρισμός Offline Cache
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
     <div id="lighthouse-loading" class="modal-overlay hidden" style="display: none;">
         <div class="lighthouse-card glass-panel" style="display: flex; flex-direction: column; align-items: center; padding: 30px; text-align: center; border: 1px solid var(--panel-border); border-radius: 16px;">
             <canvas id="lighthouse-canvas" width="200" height="200"></canvas>

@@ -10,6 +10,10 @@
     --highlight: #F4A261;
     --font-sans: 'Inter', sans-serif;
     --font-display: 'Playfair Display', serif;
+
+    /* PWA Reader Settings Defaults */
+    --reader-font-size: 18px;
+    --reader-font-family: 'Playfair Display', Georgia, Cambria, serif;
 }
 
 * {
@@ -563,4 +567,220 @@ li.category-header.active {
     font-size: 13px;
     border-radius: 6px;
     text-transform: none;
+}
+
+/* =====================================================================
+   PWA & Reader Mode Customization Styles
+   ===================================================================== */
+
+/* Network Status Indicator */
+.network-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.network-status.online {
+    background: rgba(34, 197, 94, 0.1);
+    color: #22c55e;
+    border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+.network-status.offline {
+    background: rgba(249, 115, 22, 0.1);
+    color: #f97316;
+    border: 1px solid rgba(249, 115, 22, 0.2);
+}
+
+.network-status.syncing {
+    background: rgba(0, 180, 216, 0.1);
+    color: var(--accent);
+    border: 1px solid rgba(0, 180, 216, 0.2);
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: currentColor;
+    display: inline-block;
+}
+
+.network-status.syncing .status-dot {
+    animation: pulse 1.5s infinite ease-in-out;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 0.4; transform: scale(0.9); }
+    50% { opacity: 1; transform: scale(1.2); }
+}
+
+/* Offline Categories UI in settings */
+.offline-cat-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--panel-border);
+    cursor: pointer;
+    user-select: none;
+    font-size: 13px;
+    transition: all 0.2s ease;
+}
+
+.offline-cat-chip:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--accent);
+}
+
+.offline-cat-chip.active {
+    background: rgba(0, 180, 216, 0.15);
+    border-color: var(--accent);
+    color: white;
+}
+
+.offline-cat-chip input {
+    display: none;
+}
+
+/* Reader Toolbar styling */
+.reader-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 24px;
+    padding: 10px 16px;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--panel-border);
+    flex-wrap: wrap;
+}
+
+.toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tool-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--panel-border);
+    color: var(--text-muted);
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.tool-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-main);
+}
+
+.tool-btn.active {
+    background: var(--accent);
+    color: var(--bg-dark);
+    border-color: var(--accent);
+}
+
+.divider {
+    width: 1px;
+    height: 20px;
+    background: var(--panel-border);
+}
+
+#reader-zoom-level {
+    font-size: 12px;
+    color: var(--text-muted);
+    min-width: 40px;
+    text-align: center;
+}
+
+/* Theme buttons in reader toolbar */
+.theme-btn {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: transform 0.2s, border-color 0.2s;
+}
+
+.theme-btn:hover {
+    transform: scale(1.1);
+}
+
+.theme-btn.active {
+    border-color: var(--accent);
+}
+
+.theme-light { background-color: #f8fafc; }
+.theme-sepia { background-color: #f4ecd8; }
+.theme-dark { background-color: #0f172a; border-color: rgba(255,255,255,0.1); }
+
+/* Apply reader custom values */
+.reader-content.theme-light {
+    background: #f8fafc !important;
+    color: #1e293b !important;
+}
+.reader-content.theme-light h1,
+.reader-content.theme-light h2,
+.reader-content.theme-light h3,
+.reader-content.theme-light .reader-header h1 {
+    color: #0f172a !important;
+}
+.reader-content.theme-light .reader-body {
+    color: #334155 !important;
+}
+
+.reader-content.theme-sepia {
+    background: #f4ecd8 !important;
+    color: #433422 !important;
+}
+.reader-content.theme-sepia h1,
+.reader-content.theme-sepia h2,
+.reader-content.theme-sepia h3,
+.reader-content.theme-sepia .reader-header h1 {
+    color: #2b1f13 !important;
+}
+.reader-content.theme-sepia .reader-body {
+    color: #433422 !important;
+}
+
+.reader-content.theme-dark {
+    background: #0c0d12 !important;
+    color: #cbd5e1 !important;
+}
+.reader-content.theme-dark h1,
+.reader-content.theme-dark h2,
+.reader-content.theme-dark h3,
+.reader-content.theme-dark .reader-header h1 {
+    color: var(--text-main) !important;
+}
+.reader-content.theme-dark .reader-body {
+    color: #cbd5e1 !important;
+}
+
+.reader-body {
+    font-size: var(--reader-font-size) !important;
+    font-family: var(--reader-font-family) !important;
+    transition: font-size 0.2s ease;
+}
+
+/* Serif / Sans fonts */
+.reader-body.font-serif {
+    font-family: 'Playfair Display', Georgia, Cambria, serif !important;
+}
+
+.reader-body.font-sans {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
 }
