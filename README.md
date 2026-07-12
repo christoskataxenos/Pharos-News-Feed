@@ -2,52 +2,62 @@
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg) ![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg) ![Docker](https://img.shields.io/docker/v/christosk89/feedflow?sort=semver&logo=docker&label=Docker%20Hub)
 
-Το **Pharos** είναι ένας σύγχρονος, υψηλών επιδόσεων ασύγχρονος news feed aggregator χτισμένος με **FastAPI**, **SQLAlchemy** (Async) και ένα εντυπωσιακό **Glassmorphic** frontend. Υποστηρίζει RSS/Atom feeds, έξυπνο web scraping, αυτόματη εξαγωγή εικόνων Open Graph και ενσωματωμένη μετάφραση άρθρων.
+**Pharos** is a modern, high-performance asynchronous news feed aggregator built with **FastAPI**, **SQLAlchemy** (Async), and a stunning **Glassmorphic** frontend. It supports RSS/Atom feeds, smart web scraping, automatic Open Graph image extraction, and built-in article translation.
 
 > 🧠 **Standout feature:** Pharos ships with a built-in **5-layer anti-slop quality engine** that automatically scores every incoming article and filters out clickbait, AI-generated "slop" writing, spam/promotional content, and near-duplicates — before they ever reach your feed. See [Quality Engine](#-anti-slop--quality-scoring-engine) below.
 
 ---
 
-## ✨ Χαρακτηριστικά
+## 📸 Screenshots
 
-- **🚀 Υψηλές Επιδόσεις (Async)**: Χρήση `aiohttp` και `asyncio.gather` με semaphores για ταυτόχρονη επεξεργασία δεκάδων feeds χωρίς καθυστερήσεις.
-- **🛡️ Cloudflare Bypass**: Έξυπνο σύστημα που εντοπίζει αν ένα site μπλοκάρει το scraping (403 Error) και χρησιμοποιεί αυτόματα Google Translate proxy για να ανακτήσει το περιεχόμενο.
-- **📂 Αυτόματη Κατηγοριοποίηση**: Δυνατότητα δημιουργίας κατηγοριών on-the-fly. Τα νέα feeds ταξινομούνται αυτόματα και εμφανίζονται στο sidebar navigation.
-- **⚡ SQLite με WAL Mode**: Βελτιστοποιημένη βάση δεδομένων για αποφυγή του "database is locked" και υποστήριξη υψηλού concurrency.
-- **🔄 Cursor-Based Pagination**: Infinite scrolling χωρίς διπλότυπα άρθρα και με ελάχιστο φόρτο στη βάση, ακόμα και με χιλιάδες εγγραφές.
+| Home Page / Feed | Reader Mode |
+|:---:|:---:|
+| ![Home Page](assets/home-page.png) | ![Greek Articles](assets/greek-articles.png) |
+| **Translation Feature** | **Settings Panel** |
+| ![Translation](assets/translation-to-english.png) | ![Settings](assets/settings.png) |
+
+---
+
+## ✨ Features
+
+- **🚀 High Performance (Async)**: Utilizes `aiohttp` and `asyncio.gather` with semaphores to concurrently process dozens of feeds without lag.
+- **🛡️ Cloudflare Bypass**: Smart system that detects if a site blocks scraping (403 Error) and automatically falls back to a Google Translate proxy to fetch the content.
+- **📂 Automatic Categorization**: Ability to create categories on-the-fly. New feeds are automatically sorted and displayed in the sidebar navigation.
+- **⚡ SQLite in WAL Mode**: Database optimized to prevent "database is locked" errors and support high concurrency.
+- **🔄 Cursor-Based Pagination**: Infinite scrolling without duplicate articles and minimal database load, even with thousands of records.
 - **🎨 Glassmorphic UI**:
   - Animated WebGL particle background (Three.js).
   - Lighthouse loading animation.
-  - Reader Mode για καθαρή ανάγνωση άρθρων (Readability.js).
-- **🌍 Μετάφραση & Scrapers**: Ενσωματωμένη μετάφραση στα Ελληνικά και ειδικοί scrapers για sites που δεν έχουν RSS (π.χ. AEK365).
-- **📦 Docker Ready**: Έτοιμο Dockerfile για εύκολο deployment οπουδήποτε.
-- **🧠 Anti-Slop Quality Engine**: 5-layer scoring σύστημα που εντοπίζει clickbait, AI-generated "slop" κείμενο, spam/promotional content και near-duplicate άρθρα, φιλτράροντας αυτόματα ό,τι δεν περνάει το κατώφλι ποιότητας.
+  - Reader Mode for a distraction-free reading experience (Readability.js).
+- **🌍 Translation & Custom Scrapers**: Built-in translation and specialized scrapers for websites that lack RSS (e.g., AEK365).
+- **📦 Docker Ready**: Ready-to-use Dockerfile for easy deployment anywhere.
+- **🧠 Anti-Slop Quality Engine**: A 5-layer scoring system that detects clickbait, AI-generated "slop" text, spam/promotional content, and near-duplicate articles, automatically filtering out anything that doesn't meet the quality threshold.
 
 ---
 
 ## 🧠 Anti-Slop & Quality Scoring Engine
 
-Το Pharos δεν είναι απλά ένας aggregator — κάθε άρθρο περνάει από ένα **πολυεπίπεδο σύστημα βαθμολόγησης ποιότητας** (`filters.py`) πριν εμφανιστεί στο feed. Κάθε layer προσθέτει penalty στο quality score ενός άρθρου (0.0–1.0). Άρθρα κάτω από το κατώφλι (`QUALITY_THRESHOLD = 0.3`) μαρκάρονται αυτόματα ως `is_filtered` και κρύβονται από το κύριο feed.
+Pharos is not just an aggregator — every article passes through a **multi-layer quality scoring system** (`filters.py`) before appearing in the feed. Each layer applies a penalty to the article's quality score (ranging from 0.0 to 1.0). Articles scoring below the threshold (`QUALITY_THRESHOLD = 0.3`) are automatically marked as `is_filtered` and hidden from the main feed.
 
-| Layer | Τι εντοπίζει | Παράδειγμα σημάτων |
+| Layer | What it detects | Example signals |
 |---|---|---|
-| **1. Clickbait Detection** | Τίτλους-δόλωμα | "you won't believe", "shocking", υπερβολικά CAPS/! ? |
-| **2. AI Slop Detection** | Τυπικές LLM-generated φράσεις | "in today's rapidly evolving", "let's dive in", "unlock the power" |
-| **3. Content Quality** | Ασθενική δομή περιεχομένου | πολύ κοντός τίτλος, απόν ή ελλιπές summary |
-| **4. Spam / Promo Detection** | Διαφημιστικό ή sponsored περιεχόμενο | "sponsored", "promo code", emoji spam |
-| **5. Fuzzy Duplicate Detection** | Near-duplicate / repost άρθρα | `rapidfuzz` token-sort similarity ≥ 85–95% έναντι πρόσφατων τίτλων |
+| **1. Clickbait Detection** | Bait titles | "you won't believe", "shocking", excessive CAPS/! ? |
+| **2. AI Slop Detection** | Typical LLM-generated phrases | "in today's rapidly evolving", "let's dive in", "unlock the power" |
+| **3. Content Quality** | Weak content structure | exceptionally short title, missing or incomplete summary |
+| **4. Spam / Promo Detection** | Advertising or sponsored content | "sponsored", "promo code", emoji spam |
+| **5. Fuzzy Duplicate Detection** | Near-duplicate / repost articles | `rapidfuzz` token-sort similarity ≥ 85–95% against recent titles |
 
-Το σύστημα τρέχει live σε κάθε νέο άρθρο κατά το fetch, και μπορεί να τρέξει αναδρομικά σε ολόκληρη τη βάση με:
+The system runs live on every new article during the fetch process, and it can also be run retrospectively across the entire database using:
 ```bash
 python backfill_quality.py
 ```
-Το script τυπώνει live στατιστικά (pass rate, filtered count) και ενημερώνει τα πεδία `quality_score` / `filter_flags` / `is_filtered` σε κάθε άρθρο.
+The script outputs live statistics (pass rate, filtered count) and updates the `quality_score` / `filter_flags` / `is_filtered` fields for every article.
 
-Υπάρχει και ζωντανό `GET /api/stats/quality` endpoint που επιστρέφει το πλήθος φιλτραρισμένων άρθρων και το μέσο quality score όλων των άρθρων — για πλήρη διαφάνεια στο πόσο φιλτράρει το σύστημα.
+There is also a live `GET /api/stats/quality` endpoint that returns the total number of filtered articles and the average quality score of all articles — ensuring complete transparency regarding the system's filtering rate.
 
 ---
 
-## 🛠️ Τεχνολογίες (Tech Stack)
+## 🛠️ Tech Stack
 
 - **Backend**: Python 3.11+, FastAPI, SQLAlchemy (Async), Pydantic.
 - **Database**: SQLite (Asyncio).
@@ -56,69 +66,69 @@ python backfill_quality.py
 
 ---
 
-## 🚀 Γρήγορη Εκκίνηση (Quick Start)
+## 🚀 Quick Start
 
-### 🐳 Με Docker (Προτεινόμενο)
+### 🐳 Using Docker (Recommended)
 
-Η εφαρμογή είναι ρυθμισμένη να **κάνει αυτόματα seed** τα default feeds και να ξεκινάει το **πρώτο συγχρονισμό** άρθρων με το που τρέξει.
+The application is configured to **automatically seed** the default feeds and initiate the **first article synchronization** upon startup.
 
-1. **Κατεβάστε και τρέξτε το image**:
+1. **Pull and run the image**:
    ```bash
    docker run -d -p 8000:8000 --name pharos christosk89/feedflow:latest
    ```
-2. **Πρόσβαση**: Ανοίξτε το πρόγραμμα περιήγησης στο `http://localhost:8000`.
+2. **Access**: Open your browser and navigate to `http://localhost:8000`.
 
-*Σημείωση: Για να μην χάνονται τα δεδομένα σας όταν σβήνετε το container, χρησιμοποιήστε volumes:*
+*Note: To prevent data loss when the container is removed, use volumes:*
 ```bash
 docker run -d -p 8000:8000 -v pharos_data:/app christosk89/feedflow:latest
 ```
 
-### 💻 Τοπική Εγκατάσταση (Local Setup)
+### 💻 Local Setup
 
 1. **Clone & Virtual Env**:
    ```bash
    git clone <your-repo-url>
    cd feedflow-v2
    python -m venv venv
-   source venv/bin/activate  # Σε Windows: .\venv\Scripts\Activate.ps1
+   source venv/bin/activate  # On Windows: .\venv\Scripts\Activate.ps1
    ```
 
-2. **Εγκατάσταση Dependencies**:
+2. **Install Dependencies**:
    ```bash
    pip install -r requirements.txt
    ```
 
-3. **Ρύθμιση `.env`**:
-   Δημιουργήστε ένα αρχείο `.env`:
+3. **Configure `.env`**:
+   Create a `.env` file:
    ```env
    ADMIN_USERNAME=admin
    ADMIN_PASSWORD=your_password
    ```
 
-4. **Εκτέλεση**:
+4. **Run**:
    ```bash
    uvicorn main:app --reload
    ```
-   *Η βάση θα δημιουργηθεί και θα γεμίσει αυτόματα με τα default feeds στην πρώτη εκτέλεση.*
+   *The database will be automatically created and populated with default feeds on the first run.*
 
 ---
 
-## 📂 Δομή Φακέλων
+## 📂 Project Structure
 
-- `main.py`: Τα API endpoints και η λογική εκκίνησης.
-- `fetcher.py`: Η "καρδιά" του συστήματος. Διαχειρίζεται το parsing, scraping και Cloudflare bypass.
-- `seeder.py`: Περιέχει τα hardcoded default feeds (Tech News, Greek Tech, κλπ).
-- `models.py`: Τα database schemas.
-- `static/`: Όλος ο κώδικας του frontend (HTML/CSS/JS).
-- `backfill_images.py`: Utility για να τραβήξετε εικόνες Open Graph για παλιά άρθρα.
-- `filters.py`: Ο anti-slop quality engine — clickbait, AI-slop, spam/promo και fuzzy-duplicate detection.
-- `backfill_quality.py`: Utility για αναδρομική βαθμολόγηση ποιότητας σε ήδη αποθηκευμένα άρθρα.
+- `main.py`: API endpoints and startup logic.
+- `fetcher.py`: The "heart" of the system. Manages parsing, scraping, and Cloudflare bypass.
+- `seeder.py`: Contains hardcoded default feeds (Tech News, Greek Tech, etc.).
+- `models.py`: Database schemas.
+- `static/`: All frontend code (HTML/CSS/JS).
+- `backfill_images.py`: Utility to fetch Open Graph images for older articles.
+- `filters.py`: The anti-slop quality engine — clickbait, AI-slop, spam/promo, and fuzzy-duplicate detection.
+- `backfill_quality.py`: Utility for retrospective quality scoring on already saved articles.
 
 ---
 
 ## 🧪 Testing
 
-Τρέξτε τα unit tests για να επιβεβαιώσετε τη σωστή λειτουργία του scraper και του URL cleaning:
+Run the unit tests to verify the correct operation of the scraper and URL cleaning:
 ```bash
 python -m unittest test_fetcher.py -v
 ```

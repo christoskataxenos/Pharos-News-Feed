@@ -8,12 +8,12 @@
     --accent: #00B4D8;
     --accent-hover: #48CAE4;
     --highlight: #F4A261;
-    --font-sans: 'Inter', sans-serif;
-    --font-display: 'Playfair Display', serif;
+    --font-sans: 'Roboto', 'Inter', sans-serif;
+    --font-display: 'Lora', 'Playfair Display', serif;
 
     /* PWA Reader Settings Defaults */
     --reader-font-size: 18px;
-    --reader-font-family: 'Playfair Display', Georgia, Cambria, serif;
+    --reader-font-family: 'Lora', Georgia, Cambria, serif;
 }
 
 * {
@@ -778,9 +778,9 @@ li.category-header.active {
 
 /* Serif / Sans fonts */
 .reader-body.font-serif {
-    font-family: 'Playfair Display', Georgia, Cambria, serif !important;
+    font-family: 'Lora', Georgia, Cambria, serif !important;
 }
 
 .reader-body.font-sans {
-    font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
+    font-family: 'Roboto', 'Inter', system-ui, -apple-system, sans-serif !important;
 }
