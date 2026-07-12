@@ -85,6 +85,16 @@ docker run -d -p 8000:8000 -v pharos_data:/app christosk89/feedflow:latest
 
 ### 💻 Local Setup
 
+#### Option A: One-Liner Windows Install (Automated)
+
+Open PowerShell and run:
+```powershell
+irm https://raw.githubusercontent.com/christoskataxenos/Pharos-News-Feed/main/install-pharos.ps1 | iex
+```
+*This script will automatically clone the repository, install Python dependencies, set up the environment, and create a shortcut on your Desktop.*
+
+#### Option B: Manual Setup
+
 1. **Clone & Virtual Env**:
    ```bash
    git clone <your-repo-url>
